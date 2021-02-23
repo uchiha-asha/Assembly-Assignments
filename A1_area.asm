@@ -30,11 +30,11 @@ main:
 		li $v0, 4			# print_string syscall code = 4
 		la $a0, msg2_		# asking for x-coordinate
 		syscall
-
+		
 		li $v0, 5			# read_int syscall code = 5
 		syscall
-
 		move $t1, $v0		# move value of x-coordinate from v0 to t1
+		
 		li $v0, 4			# print_string syscall code = 4
 		la $a0, msg3_		# asking for y-coordinate
 		syscall
@@ -60,15 +60,14 @@ loop:
 
 		li $v0, 5			# read_int syscall code = 5
 		syscall
-
 		move $t6,$v0		# move value of x-coordinate from v0 to t6
+		
 		li $v0, 4			# print_string syscall code = 4
 		la $a0, msg3		# asking for y-coordinate
 		syscall
 
 		li $v0, 5			# read_int syscall code = 5
 		syscall
-
 		move $t7,$v0		# move value of y-coordinate from v0 to t7
 		
 		# registers t6 and t7 shall store the current co-ordinates
@@ -90,22 +89,22 @@ loop:
 		mul $t4,$t4,$t8		# numerator = numerator * height
 		li $t5, 2			# denominator = 2
 
-		j find_area			# find area using the current numerator or denominator
+		j findArea			# find area using the current numerator or denominator
 
 pos_neg:
 		# Now y1*y2 < 0 and hence y1 and y2 are on opposite side of x, thus, 2 triangles are formed
 		add $t5, $t2, $t7   # denominator = abs(y1) + abs(y2)
 		mul $t5, $t5, 2		# denominator *= 2
-		sub $t8, $t6, $t1   # b = x2 - x1
-		abs $t8, $t8		# absolute value of b is used
+		sub $t8, $t6, $t1   # width = x2 - x1
+		abs $t8, $t8		# absolute value of width is used
 		mul $t2, $t2, $t2   # y1 = y1*y1
 		mul $t7, $t7, $t7	# y2 = y2*y2
 		add $t4, $t2, $t7   # numerator = y1 + y2
-		mul $t4,$t4,$t8     # numerator = b*numerator
+		mul $t4, $t4, $t8     # numerator = width*numerator
 
-		j find_area			# find area using current numerator and denominator
+		j findArea			# find area using current numerator and denominator
 
-find_area:
+findArea:
 		mtc1 $t4, $f2		# move integer numerator to float register
 		mtc1 $t5, $f3     	# load integer denominator to float register
 		cvt.s.w $f2, $f2    # convert the numerator to float
