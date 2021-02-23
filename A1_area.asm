@@ -2,12 +2,12 @@
 
 # Data segment goes here
 .data
-msg1:	.asciiz "Enter the number of points (n):	"
-msg2_:	.asciiz "Enter the x- co-ordinate of the first point:  "
-msg3_:	.asciiz "Enter the y- co-ordinate of the first point:  " 
-msg2:	.asciiz "Enter the x- co-ordinate of the next point:  "
-msg3:	.asciiz "Enter the y- co-ordinate of the next point:  "
-msg4:	.asciiz "The area of the curve formed by the given points is "
+		msg1:	.asciiz "Enter the number of points (n):	"
+		msg2_:	.asciiz "Enter the x- co-ordinate of the first point:  "
+		msg3_:	.asciiz "Enter the y- co-ordinate of the first point:  " 
+		msg2:	.asciiz "Enter the x- co-ordinate of the next point:  "
+		msg3:	.asciiz "Enter the y- co-ordinate of the next point:  "
+		msg4:	.asciiz "The area of the curve formed by the given points is "
 
 # main code goes here
 .text
@@ -16,8 +16,10 @@ main:
 		li $v0, 4			# print_string syscall code = 4
 		la $a0, msg1
 		syscall
+
 		li $v0, 5			# read_int syscall code = 5
 		syscall
+
 		move $s0, $v0		# move value of n from v0 to s0
 		
 		# initialise area
@@ -26,16 +28,20 @@ main:
 
 		# reading the co-ordinate of the first point
 		li $v0, 4			# print_string syscall code = 4
-		la $a0, msg2		# asking for x-coordinate
+		la $a0, msg2_		# asking for x-coordinate
 		syscall
+
 		li $v0, 5			# read_int syscall code = 5
 		syscall
+
 		move $t1, $v0		# move value of x-coordinate from v0 to t1
 		li $v0, 4			# print_string syscall code = 4
-		la $a0, msg3		# asking for y-coordinate
+		la $a0, msg3_		# asking for y-coordinate
 		syscall
+
 		li $v0, 5			# read_int syscall code = 5
 		syscall
+		
 		move $t2, $v0		# move value of y-coordinate from v0 to t2
 		
 		# registers t1 and t2 shall store the previous co-ordinates
@@ -51,14 +57,18 @@ loop:
 		li $v0, 4			# print_string syscall code = 4
 		la $a0, msg2		# asking for x-coordinate
 		syscall
+
 		li $v0, 5			# read_int syscall code = 5
 		syscall
+
 		move $t6,$v0		# move value of x-coordinate from v0 to t6
 		li $v0, 4			# print_string syscall code = 4
-		la $a0, msg2		# asking for y-coordinate
+		la $a0, msg3		# asking for y-coordinate
 		syscall
+
 		li $v0, 5			# read_int syscall code = 5
 		syscall
+
 		move $t7,$v0		# move value of y-coordinate from v0 to t7
 		
 		# registers t6 and t7 shall store the current co-ordinates
@@ -79,6 +89,7 @@ loop:
 		abs $t8, $t8		# store absolute value of width in register t8
 		mul $t4,$t4,$t8		# numerator = numerator * height
 		li $t5, 2			# denominator = 2
+
 		j find_area			# find area using the current numerator or denominator
 
 pos_neg:
@@ -91,6 +102,7 @@ pos_neg:
 		mul $t7, $t7, $t7	# y2 = y2*y2
 		add $t4, $t2, $t7   # numerator = y1 + y2
 		mul $t4,$t4,$t8     # numerator = b*numerator
+
 		j find_area			# find area using current numerator and denominator
 
 find_area:
@@ -111,8 +123,10 @@ printArea:
 		li $v0, 4			# print_string syscall code = 4
 		la $a0, msg4
 		syscall
+
 		li $v0, 2
 	    mov.s $f12, $f1		# Move contents of register $f3 to register $f12 to print the area
 		syscall
+
 		li	$v0, 10			# exit the program
 		syscall
