@@ -8,3 +8,8 @@ Assignment-1: Area Under Curve Using MIPS
 
 Input:: An integer n denoting the number of test cases and 2n lines containing x- and y-coordinates of the n points (arranged in ascending order)
 Output:: Single line outputting the area under the points joined by straight lines and x-axis.
+
+Assignment-2: Post-fix evaluation using MIPS
+
+Input:: A string containing post-fix expression containing +, * and -
+Output:: Single integer output of the expression (or an error message)
