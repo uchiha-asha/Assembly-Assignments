@@ -19,7 +19,7 @@ for i in range(8):
     n = int(file.readline())
     for j in range(n):
         inputs.append(tuple(map(int, file.readline().split())))
-    string += "A1_Test" + str(i+1)+".in: " + str(area(n, inputs)) + "\n"
+    string += "A1_Test2" + str(i+1)+".in: " + str(area(n, inputs)) + "\n"
     file.close()
 
 file = open("A1_Test_out.out","w")
