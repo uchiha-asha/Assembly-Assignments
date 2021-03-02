@@ -5,7 +5,7 @@
 		msg1:	.asciiz	"Enter a valid postfix expression:\n"
 		msg2:	.asciiz "The input expression is invalid.\n"
 		msg3:	.asciiz "The output of the expression is "
-		msg4:	.asciiz "Enter 1 to run again: "
+		msg4:	.asciiz "Enter 0 to run again, anything else to exit: "
 		newline:	.asciiz "\n"
 
 		input:	.space	100		# reserved space for input string
@@ -17,12 +17,12 @@ main:
 		li $v0, 4				# print_string syscall code = 4
 		la $a0, msg1
 		syscall
-
+		
 		li $v0, 8				# read_string syscall code = 8
 		la $a0, input			# address to put the string
 		li $a1, 100				# max chars for string
 		syscall
-
+		
 		li $s0, 0				# number of digits in expression is 0 (initialising)
 		la $t0, input			# load input address to $t0 for traversing the string
 		
@@ -44,7 +44,7 @@ build_stack:
 		
 		# push to stack
 		subu $sp, $sp, 4
-		sb $t1, ($sp)			# store current digit into top of the stack
+		sw $t1, ($sp)			# store current digit into top of the stack
 		
 		addi $s0, $s0, 1		# number of digits are increased by 1
 		addi $t0, $t0, 1		# move to next character in the string
@@ -164,24 +164,27 @@ print:
 		j end 					# jump to end the program
 
 end:
-		# Ask to run again	
+		# asking whether or not to run again	
+		li $v0, 4				# print_string syscall code = 4
+		la $a0, newline
+		syscall
+		
 		li $v0, 4				# print_string syscall code = 4
 		la $a0, msg4
 		syscall
-
+		
 		li $v0, 5				# read_int syscall code = 5
 		syscall
 		move $t8, $v0
-
-		li $t9, 1
-		beq $t8, $t9, main		# if 1 is entered, then, go back to main
-
-		li	$v0, 10				# exit the program
+		
+		li $v0, 4				# print_string syscall code = 4
+		la $a0, newline
+		syscall
+		
+		li $t9, 0
+		beq $t8, $t9, main		# if 0 is entered, go back to main
+		
+		li	$v0, 10				# otherwise exit the program
 		syscall
 
 .end main
-
-
-
-
-

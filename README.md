@@ -11,5 +11,7 @@ Output:: Single line outputting the area under the points joined by straight lin
 
 Assignment-2: Post-fix evaluation using MIPS
 
+1. Run the file "A2_postfix_evaluator.asm" and input the values as per the specifications.
+
 Input:: A string containing post-fix expression containing +, * and -
 Output:: Single integer output of the expression (or an error message)
