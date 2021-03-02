@@ -5,6 +5,8 @@
 		msg1:	.asciiz	"Enter a valid postfix expression:\n"
 		msg2:	.asciiz "The input expression is invalid.\n"
 		msg3:	.asciiz "The output of the expression is "
+		msg4:	.asciiz "Enter 1 to run again: "
+		newline:	.asciiz "\n"
 
 		input:	.space	100		# reserved space for input string
 
@@ -70,17 +72,17 @@ addNum:
 		li $t6, 2
 		blt $s0, $t6, error		# if the depth of stack is less than 2, raise insufficient operands error
 		
-		lb $t2, ($sp)			# store first operand in register $t2
+		lw $t2, ($sp)			# store first operand in register $t2
 		addu $sp, $sp, 4		# pop from the stack
 		addi $s0, $s0, -1		# reduce the depth of stack by 1
 		
-		lb $t3, ($sp)			# store second operand in register $t3
+		lw $t3, ($sp)			# store second operand in register $t3
 		addu $sp, $sp, 4		# pop from the stack
 		addi $s0, $s0, -1		# reduce the depth of stack by 1
 		
 		add $t2, $t2, $t3		# store the sum of operands in $t2
 		subu $sp, $sp, 4		# make space for output in the stack
-		sb $t2, ($sp)			# push the output onto the stack
+		sw $t2, ($sp)			# push the output onto the stack
 		addi $s0, $s0, 1		# increase the depth of stack by 1
 		
 		addi $t0, $t0, 1		# move to next character in the string
@@ -91,17 +93,17 @@ mulNum:
 		li $t6, 2
 		blt $s0, $t6, error		# if the depth of stack is less than 2, raise insufficient operands error
 		
-		lb $t2, ($sp)			# store first operand in register $t2
+		lw $t2, ($sp)			# store first operand in register $t2
 		addu $sp, $sp, 4		# pop from the stack
 		addi $s0, $s0, -1		# reduce the depth of stack by 1
 		
-		lb $t3, ($sp)			# store second operand in register $t3
+		lw $t3, ($sp)			# store second operand in register $t3
 		addu $sp, $sp, 4		# pop from the stack
 		addi $s0, $s0, -1		# reduce the depth of stack by 1
 		
 		mul $t2, $t2, $t3		# store the product of operands in $t2
 		subu $sp, $sp, 4		# make space for output in the stack
-		sb $t2, ($sp)			# push the output onto the stack
+		sw $t2, ($sp)			# push the output onto the stack
 		addi $s0, $s0, 1		# increase the depth of stack by 1
 		
 		addi $t0, $t0, 1		# move to next character in the string
@@ -112,17 +114,17 @@ subNum:
 		li $t6, 2
 		blt $s0, $t6, error		# if the depth of stack is less than 2, raise insufficient operands error
 		
-		lb $t2, ($sp)			# store first operand in register $t2
+		lw $t2, ($sp)			# store first operand in register $t2
 		addu $sp, $sp, 4		# pop from the stack
 		addi $s0, $s0, -1		# reduce the depth of stack by 1
 		
-		lb $t3, ($sp)			# store second operand in register $t3
+		lw $t3, ($sp)			# store second operand in register $t3
 		addu $sp, $sp, 4		# pop from the stack
 		addi $s0, $s0, -1		# reduce the depth of stack by 1
 		
 		sub $t2, $t3, $t2		# store the difference of operands in $t2
 		subu $sp, $sp, 4		# make space for output in the stack
-		sb $t2, ($sp)			# push the output onto the stack
+		sw $t2, ($sp)			# push the output onto the stack
 		addi $s0, $s0, 1		# increase the depth of stack by 1
 		
 		addi $t0, $t0, 1		# move to next character in the string
@@ -133,7 +135,7 @@ output:
 		li $t6, 1
 		bne $s0, $t6, error		# if the depth of stack is not equal to 1, raise insufficient operators error
 		
-		lb $t2, ($sp)			# store the result in register $t2
+		lw $t2, ($sp)			# store the result in register $t2
 		addu $sp, $sp, 4		# pop from the stack
 		
 		j print					# move to print to print the output
@@ -154,10 +156,26 @@ print:
 		li $v0, 1				# print_integer syscall code = 1
 		move $a0, $t2			# print the output stored in $t2
 		syscall
+
+		li $v0, 4				# print_string syscall code = 4
+		la $a0, newline
+		syscall
 		
 		j end 					# jump to end the program
 
 end:
+		# Ask to run again	
+		li $v0, 4				# print_string syscall code = 4
+		la $a0, msg4
+		syscall
+
+		li $v0, 5				# read_int syscall code = 5
+		syscall
+		move $t8, $v0
+
+		li $t9, 1
+		beq $t8, $t9, main		# if 1 is entered, then, go back to main
+
 		li	$v0, 10				# exit the program
 		syscall
 
