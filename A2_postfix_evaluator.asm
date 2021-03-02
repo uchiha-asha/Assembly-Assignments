@@ -31,7 +31,7 @@ build_stack:
 		# reading the operands (digits) one by one
 		lb $t1, 0($t0)			# load the byte pointed by t0 to t1
 		andi $t1, $t1, 0xff		# isolate the first character using the 0x000000FF mask
-		beqz $t1, error			# if the end of string is encountered, raise error as no operators (or objects) were found
+		beqz $t1, Output			# if the end of string is encountered, move to evaluate output
 		
 		li $t9, '0'				# store '0' in t9
 		bgt $t9, $t1, evaluate 	# digit occurrences ended, going to evaluate the expression
@@ -136,7 +136,7 @@ Output:
 		
 		lw $t2, ($sp)			# store the result in register $t2
 		addu $sp, $sp, 4		# pop from the stack
-		sw $t2, output		# store the output in suitable memory location
+		sw $t2, output			# store the output in suitable memory location
 		
 		j print					# move to print to print the output
 
