@@ -1,0 +1,8 @@
+add $t1 $1 $t3
+sub $1 $t5 $s0
+addi $t1 $t2 100
+haha:
+j haha1
+haha1:
+beq $t1 $t2 haha
+
