@@ -1,0 +1,13 @@
+addi $6 $6 500000
+addi $t0, $t0 499995
+addi $t1 $t1, 500000
+loop:
+    beq $t0, $6, loop1
+    sw $t0, 4($t1)
+    addi $t1 $t1 4 
+    addi $t0, $t0, 1
+    j loop
+loop1 :
+    lw $t2 4($6)
+    addi $6 $6 4
+    bne $6 $t1 loop1 

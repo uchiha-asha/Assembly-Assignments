@@ -1,0 +1,12 @@
+addi $t0, $t0, 10
+addi $v0, $v0, 1
+slt $t1, $v0, $t0
+beq $t1 , $v0, done
+j not_done
+done:
+     sub $t2, $v0 ,$t0
+     j end
+not_done:
+     sub $t2 ,$t0, $v0
+end:
+   

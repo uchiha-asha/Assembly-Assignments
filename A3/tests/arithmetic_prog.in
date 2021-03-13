@@ -1,0 +1,8 @@
+addi $0, $0, 1
+addi $2, $2, 7
+loop:
+    add $1, $1, $0
+    beq $1, $2, end
+    j loop
+end :
+    mul $t5, $1, $2

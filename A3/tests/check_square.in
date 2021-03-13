@@ -1,0 +1,5 @@
+addi $29 $29 100
+loop:
+    mul $30 $t0 $t0
+    addi $t0 $t0 1
+    bne $30 $29 loop
