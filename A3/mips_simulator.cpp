@@ -227,7 +227,7 @@ void addi(int ind) {
 void printRegisters() {
 	for (int i=0; i<32; i++) {
 		cout << "R" << dec << i << ":";
-		cout << dec << registers[i] << " ";
+		cout << hex << registers[i] << " ";
 	}
 	cout << endl << "-----------------------------------------------------" << endl;
 }
@@ -355,7 +355,7 @@ int main()
 
 	assert(i==n);
 
-	cout << "Number of cycle cycles: " << cycle << endl;
+	cout << "Number of clock cycles: " << cycle << endl;
 	cout << "Frquency of instructions:" << endl;
 	for (auto ele : instructions_count) cout << ele.first << ":" << ele.second << "  ";
 
