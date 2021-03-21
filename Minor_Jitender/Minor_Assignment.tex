@@ -1,0 +1,91 @@
+\documentclass{article} % Especially this!
+
+\usepackage[english]{babel}
+\usepackage[utf8]{inputenc}
+\usepackage[margin=1.5in]{geometry}
+\usepackage{amsmath}
+\usepackage{amsthm}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage{graphicx}
+\usepackage[siunitx]{circuitikz}
+\usepackage{tikz}
+\usepackage[colorinlistoftodos, color=orange!50]{todonotes}
+\usepackage{hyperref}
+\usepackage[numbers, square]{natbib}
+\usepackage{fancybox}
+\usepackage{epsfig}
+\usepackage{soul}
+\usepackage[framemethod=tikz]{mdframed}
+\usepackage[shortlabels]{enumitem}
+\usepackage[version=4]{mhchem}
+\usepackage{multicol}
+\usepackage{graphicx}
+\graphicspath{ {./} }
+
+\newcommand{\blah}{blah blah blah \dots}
+
+\setlength{\marginparwidth}{3.4cm}
+
+\newcommand{\summary}[1]{
+\begin{mdframed}[nobreak=true]
+\begin{minipage}{\textwidth}
+\vspace{0.5cm}
+\end{minipage}
+\end{mdframed}}
+
+\renewcommand*{\thefootnote}{\fnsymbol{footnote}}
+
+\title{
+\normalfont \large
+\textsc{Minor Assignment
+\vspace{10pt}
+\\COL 216, Spring 2021} \\
+[10pt] 
+\rule{\linewidth}{0.5pt} \\[6pt] 
+\Large MIPS Simulator with DRAM Timing Model  \\
+\rule{\linewidth}{2pt}  \\[10pt]
+}
+\author{Jitender Kumar Yadav, 2019CS10361}
+\date{\normalsize March 21, 2021}
+\begin{document}
+
+\maketitle
+\section{Problem Statement}
+\textbf{A basic MIPS interpreter handling a subset of the ISA is developed by you in Assignment 3. The  objective is to enhance it with two new features, making it a MIPS simulator.
+\\1. Develop a model for the Main Memory and integrate into the basic interpreter.
+\\2. The memory access should be non-blocking (subsequent instructions don’t always wait for the previous instructions to complete).
+}
+
+\section{Algorithm and Approach}
+The same interpreter as used in Assignment-3 was modified. The memory model was changed to incorporate
+\begin{itemize}
+    \item[$\diamond$] The file containing the instructions is read and the syntax is checked.
+    \item[$\diamond$] The data in the 32 registers is stored in an array and so is the auxiliary memory containing $2^{20}$ bits.
+    \item[$\diamond$] The operations keep on updating the memory and register contents along side. The register contents are hexadecimal quantities.
+    \item[$\diamond$] The registers may be accessed by using MIPS conventions \$s and \$t or by integers 1-32.
+    \item[$\diamond$] The memory is now accessed using DRAM model and is a 2-D array instead. This has been incorporated and the time taken to access each component of the memory has been taken into account as row access delay and column access delay.
+    \item[$\diamond$] In the second part, the subsequent add instructions have been taken into account. Thus the current register being affected is stored and the add operations not involving them have been changed suitably.
+\end{itemize}
+
+\section{Input and Output}
+\subsection{Input Specifications:}
+\begin{itemize}
+    \item The input contains name of the text file containing assembly code, the row access delay and the column access delay, in one line.
+\end{itemize}
+\subsection{Output}
+\begin{itemize}
+    \item The output is a set of printed lines in command lines. The first few lines print the hexadecimal values of the contents of the registers R0-R32 after each statement is evaluated.
+    \item The last few lines print the no of clock cycles and the number of times each instruction has been executed as comma separated values. Also, the values stored in registers and the memory modified are displayed.
+\end{itemize}
+
+\section{Strengths}
+The non-blocking memory, keeps on performing the addition operations that do not involve the registers currently under modification. This allows the processor to work in a versatile manner.
+
+\section{Weaknesses}
+\begin{itemize}
+    \item We could have used queues to store all the add instructions being dropped. So, if a particular add instruction affects certain registers and one of the register is being affected, we skip to the next add instruction. This could be incorporated in the upcoming changes.
+    \item We could have extended the same to multiply, subtract and other operators, which has not been incorporated.
+\end{itemize}
+
+\end{document}

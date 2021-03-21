@@ -3,18 +3,24 @@
 using namespace std;
 
 int MAX_MEMORY = (1<<20), 					// Maximum memory
-	MAX_INSTRUCTIONS_MEMORY = (1<<15),		// Maximum memory instructions can occupy
+	MAX_INSTRUCTIONS_MEMORY = (1000),		// Maximum memory instructions can occupy
 	MAX_VALUE_IN_MEMORY = (1<<8)-1,			// Each memory address can store 1 byte
 	MAX_VALUE_IN_REGISTER = (1ll<<32)-1,	// Max value in memory
     PC = 0,									// PC stores the address of current instruction
     cycle = 0,								// Number of cycle cycle
-    registers[32] = {0};					// Values of registers
+    registers[32] = {0},					// Values of registers
+	row_buffer = -1,						// Provides the row that is being loaded
+	ROW_ACCESS_DELAY, COL_ACCESS_DELAY;
+string instruction;							// Store the current instruction
 short int memory[(1<<20)+1] = {0};			// Array to hold memory
 unordered_map<string, int> reg_name_to_number, 		// Map of (conventional register name, register number)
 						   instructions_count,		// Map to hold count of instructions
 						   branches;				// Map of (branch label, pointer to the branch in instructions)
 string input_file;
 vector<string> instructions;
+
+int reg_progress = -1, clock_start = -1, clock_end = -1;
+string last_instruction = "";
 
 void initialize() {
 	vector<string> regs = {"zero", "at", "v0", "v1", "a0", "a1", "a2", "a3", "t0", "t1", "t2", "t3",
@@ -66,7 +72,6 @@ int lexParse() {
 	// Function to check the syntax of the input file and load instructions to memory
 	int i = 0, n = instructions.size();
 	while (i<n) {
-		// cout << "ha" << endl;
 		PC += 4;
 		if (PC > MAX_INSTRUCTIONS_MEMORY) {
 			return -2;
@@ -76,7 +81,6 @@ int lexParse() {
 			if (!isValidRegister(instructions[i+1]) ||
 				!isValidRegister(instructions[i+2]) ||
 				!isValidRegister(instructions[i+3])) return -1;
-
 			memory[PC-4] = i;
 			i += 4;
 		}
@@ -86,7 +90,6 @@ int lexParse() {
 				!isValidRegister(instructions[i+2]) ||
 				isValidRegister(instructions[i+3]) || 
 				isValidInstruction(instructions[i+3])) return -1;
-
 			memory[PC-4] = i;
 			i += 4;
 		}
@@ -94,7 +97,6 @@ int lexParse() {
 			if (i+1 >= n) return -1;
 			if (isValidRegister(instructions[i+1]) || 
 				isValidInstruction(instructions[i+1])) return -1;
-
 			memory[PC-4] = i;
 			i += 2;
 		}
@@ -102,7 +104,6 @@ int lexParse() {
 			if (i+2 >= n) return -1;
 			if (!isValidRegister(instructions[i+1]) ||
 				!isValidRegister(offset(instructions[i+2]).first)) return -1;
-
 			memory[PC-4] = i;
 			i += 3;
 		}
@@ -111,13 +112,11 @@ int lexParse() {
 			if (!isValidRegister(instructions[i+1]) ||
 				!isValidRegister(instructions[i+2]) ||
 				!isNumber(instructions[i+3])) return -1;
-
 			memory[PC-4] = i;
 			i += 4;
 		}
 		else {
 			memory[PC-4] = i;
-			
 			string s = instructions[i];
 			if (instructions[i].back() == ':') s = s.substr(0, int(s.length())-1), i += 1;
 			else {
@@ -130,10 +129,8 @@ int lexParse() {
 			branches.insert({s, PC});
 		}
 	}
-
 	memory[PC] = n;
 	PC += 4;
-
 	return 0;
 }
 
@@ -149,7 +146,6 @@ int getInstructionMemory(int ind) {
 	if (mem >= PC || mem%4) return -1;
 	return mem;
 }
-
 
 void add(int ind) {
 	long long int sum = registers[getRegister(ind+2)] + 0ll + registers[getRegister(ind+3)];
@@ -206,7 +202,6 @@ int sw(int ind) {
 	int val = registers[getRegister(ind+1)];
 	memory[mem] = val & MAX_VALUE_IN_MEMORY, memory[mem+1] = (val >> 8) & MAX_VALUE_IN_MEMORY, 
 	memory[mem+2] = (val >> 16) & MAX_VALUE_IN_MEMORY, memory[mem+3] = (val >> 24) & MAX_VALUE_IN_MEMORY;
-	for (int i=0; i<4; i++) cout << memory[mem+i] << " \n"[i==3];
 	return 0;
 }
 
@@ -215,18 +210,34 @@ void addi(int ind) {
 	registers[getRegister(ind+1)] = sum & MAX_VALUE_IN_REGISTER;
 }
 
-void printRegisters() {
-	for (int i=0; i<32; i++) {
-		cout << "R" << dec << i << ":";
+void printRegisters(int cycle, string instruction) {
+	if (cycle == 1) cout << "----------------------------------------------------------------------------------" << endl;
+	if (cycle != -1) cout << "Cycle Number: " << dec << cycle << endl;
+	else cout << "Final Values" << endl;
+	if (cycle != -1) cout << instruction << endl;
+	for (int i=0; i<31; i++) {
 		cout << hex << registers[i] << " ";
 	}
-	cout << endl << "-----------------------------------------------------" << endl;
+	if (cycle != -1) cout << hex << registers[31] << endl << "----------------------------------------------------------------------------------" << endl;
+	else{
+		cout << hex << registers[31] << endl;
+		cout << "\n";
+		cout << "Memory Contents" << endl;
+		for (int i=1000; i<MAX_MEMORY; i+=4) {
+			int res = 0, mask = 0;
+			for (int j=0; j<4; j++) res +=  (memory[j+i] << mask), mask += 8;
+			if (res) cout << dec << i/1024 << "," << i%1024 << "-" << i%1024+3 << "\t:\t" << res << endl;
+		}
+		cout << endl;
+		cout << "**********************************************************************************" << endl;
+	}
 }
 
-int main() 
+int main(int argc, char *argv[]) 
 {
-	cout << "Enter file name: ";
-	cin >> input_file;
+	input_file = argv[1];
+	ROW_ACCESS_DELAY = stoi(argv[2]);
+	COL_ACCESS_DELAY = stoi(argv[3]);
 	freopen(input_file.c_str(), "r", stdin);
 	initialize(); 	// initiallize varaibles
 
@@ -251,32 +262,42 @@ int main()
 		return -1;
 	}
 	else if (res == -2) {
-		cout << "Memory is full! Don't write too much instructions you noob ;)" << endl;
+		cout << "Memory is full! Don't write too many instructions, noob." << endl;
 		return -1;
 	}
 	
 	int i=0, n=instructions.size(), cnt = 0;
 	while (i<n) {
 		if (instructions[i]=="add") {
+			if((getRegister(i+1) == reg_progress || getRegister(i+2) == reg_progress || getRegister(i+3) == reg_progress)){
+				printRegisters(clock_end, last_instruction);
+				cycle = clock_end;
+				reg_progress = -1;
+			}
 			add(i);
-			for (int j=0; j<4; j++) cout << instructions[i+j] << " \n"[j==3];
+			instruction = "";
+			for (int j=0; j<4; j++) instruction += instructions[i+j] + " ";
 			i += 4;
 			instructions_count["add"]++, cycle++;
+			printRegisters(cycle, instruction);
 		}
 		else if (instructions[i]=="sub") {
 			sub(i);
-			for (int j=0; j<4; j++) cout << instructions[i+j] << " \n"[j==3];
+			instruction = "";
+			for (int j=0; j<4; j++) instruction += instructions[i+j] + " ";
 			i += 4;
 			instructions_count["sub"]++, cycle++;
 		}
 		else if (instructions[i]=="mul") {
 			mul(i);
-			for (int j=0; j<4; j++) cout << instructions[i+j] << " \n"[j==3];
+			instruction = "";
+			for (int j=0; j<4; j++) instruction += instructions[i+j] + " ";
 			i += 4;
 			instructions_count["mul"]++, cycle++;
 		}
 		else if (instructions[i]=="beq") {
-			for (int j=0; j<4; j++) cout << instructions[i+j] << " \n"[j==3];
+			instruction = "";
+			for (int j=0; j<4; j++) instruction += instructions[i+j] + " ";
 			i = beq(i);
 			if (i==-1) {
 				cout << "Trying to access invalid instruction in memory" << endl;
@@ -285,7 +306,8 @@ int main()
 			instructions_count["beq"]++, cycle++;
 		}
 		else if (instructions[i]=="bne") {
-			for (int j=0; j<4; j++) cout << instructions[i+j] << " \n"[j==3];
+			instruction = "";
+			for (int j=0; j<4; j++) instruction += instructions[i+j] + " ";
 			i = bne(i);
 			if (i==-1) {
 				cout << "Trying to access invalid instruction in memory" << endl;
@@ -294,13 +316,15 @@ int main()
 			instructions_count["bne"]++, cycle++;
 		}
 		else if (instructions[i]=="slt") {
-			for (int j=0; j<4; j++) cout << instructions[i+j] << " \n"[j==3];
+			instruction = "";
+			for (int j=0; j<4; j++) instruction += instructions[i+j] + " ";
 			slt(i);
 			i += 4;
 			instructions_count["slt"]++, cycle++;
 		}
 		else if (instructions[i]=="j") {
-			for (int j=0; j<2; j++) cout << instructions[i+j] << " \n"[j==1];
+			instruction = "";
+			for (int j=0; j<2; j++) instruction += instructions[i+j] + " ";
 			i = j(i);
 			if (i==-1) {
 				cout << "Trying to access invalid instruction in memory" << endl;
@@ -309,38 +333,113 @@ int main()
 			instructions_count["j"]++, cycle++;
 		}
 		else if (instructions[i]=="lw") {
-			for (int j=0; j<3; j++) cout << instructions[i+j] << " \n"[j==2];
+			if(reg_progress != -1){
+				printRegisters(clock_end, last_instruction);
+			}
+			cycle = clock_end;
+			instruction = "";
+			for (int j=0; j<3; j++) instruction += instructions[i+j] + " ";
 			int res = lw(i);
 			if (res == -1) {
 				cout << "Trying to load from invalid memory location" << endl;
 				return -1;
 			}
+			pair<string,int> temp = offset(instructions[i+2]);
+			int reg;
+			if (!isNumber(temp.first.substr(1))) reg = reg_name_to_number[temp.first.substr(1)];
+			else reg = stoi(temp.first.substr(1));
+			int mem = registers[reg] + temp.second;
+			cycle++;
+			cout << "Cycle Number: " << dec << cycle << endl;
+			cout << "DRAM Request Initiated" << endl;
+			cout << "----------------------------------------------------------------------------------" << endl;
+			clock_start = cycle;
+			last_instruction = instruction;
+			reg_progress = getRegister(i+1);
+			if (row_buffer == -1){
+				row_buffer = mem/1024;
+				clock_end = cycle + ROW_ACCESS_DELAY + COL_ACCESS_DELAY;
+			}
+			else if(row_buffer == mem/1024){
+				clock_end = cycle + COL_ACCESS_DELAY;
+			}
+			else{
+				row_buffer = mem/1024;
+				clock_end = cycle + 2*ROW_ACCESS_DELAY + COL_ACCESS_DELAY;
+			}
 			i += 3;
 			instructions_count["lw"]++, cycle++;
 		}
 		else if (instructions[i]=="sw") {
-			for (int j=0; j<3; j++) cout << instructions[i+j] << " \n"[j==2];
+			if(reg_progress != -1){
+				printRegisters(clock_end, last_instruction);
+			}
+			cycle = clock_end;
+			instruction = "";
+			for (int j=0; j<3; j++) instruction += instructions[i+j] + " ";
 			int res = sw(i);
 			if (res == -1) {
 				cout << "Trying to store in invalid memory location" << endl;
 				return -1;
 			}
+			pair<string,int> temp = offset(instructions[i+2]);
+			int reg;
+			if (!isNumber(temp.first.substr(1))) reg = reg_name_to_number[temp.first.substr(1)];
+			else reg = stoi(temp.first.substr(1));
+			int mem = registers[reg] + temp.second;
+			cycle++;
+			cout << "Cycle Number: " << dec << cycle << endl;
+			cout << "DRAM Request Initiated" << endl;
+			cout << "----------------------------------------------------------------------------------" << endl;
+			clock_start = cycle;
+			last_instruction = instruction;
+			reg_progress = getRegister(i+1);
+			if (row_buffer == -1){
+				row_buffer = mem/1024;
+				clock_end = cycle + ROW_ACCESS_DELAY + COL_ACCESS_DELAY;
+			}
+			else if(row_buffer == mem/1024){
+				clock_end = cycle + COL_ACCESS_DELAY;
+			}
+			else{
+				row_buffer = mem/1024;
+				clock_end = cycle + 2*ROW_ACCESS_DELAY + COL_ACCESS_DELAY;
+			}
 			i += 3;
 			instructions_count["sw"]++, cycle++;
 		}
 		else if (instructions[i]=="addi") {
-			for (int j=0; j<4; j++) cout << instructions[i+j] << " \n"[j==3];
+			if((getRegister(i+1) == reg_progress || getRegister(i+2) == reg_progress)){
+				printRegisters(clock_end, last_instruction);
+				cycle = clock_end;
+				reg_progress = -1;
+			}
+			instruction = "";
+			for (int j=0; j<4; j++) instruction += instructions[i+j] + " ";
 			addi(i);
 			i += 4;
 			instructions_count["addi"]++, cycle++;
+			printRegisters(cycle, instruction);
 		}
-		else i += 1;
-		printRegisters();
+		else {
+			i += 1;
+			continue;
+		}
+		if(cycle == clock_end && reg_progress != -1){
+			printRegisters(clock_end, last_instruction);
+			reg_progress = -1;
+		}
+	}
+	if(cycle <= clock_end && reg_progress != -1){
+		printRegisters(clock_end, last_instruction);
+		cycle = clock_end;
 	}
 	assert(i==n);
-	cout << "Number of clock cycles: " << cycle << endl;
+	cout << "Number of clock cycles: " << dec << cycle << endl;
 	cout << "Frquency of instructions:" << endl;
 	for (auto ele : instructions_count) cout << ele.first << ":" << ele.second << "  ";
-	cout << endl << "Done" << endl;
+	cout << "\n" << "\n";
+	printRegisters(-1, "");
+	cout << "" << endl;
 	return 0;
 }
