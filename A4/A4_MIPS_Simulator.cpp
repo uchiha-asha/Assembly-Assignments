@@ -2,6 +2,12 @@
 
 using namespace std;
 
+/*struct QUEUE_OP {
+	int index_op = -1,
+		cycle_start = -1,
+		cycle_end = -1;
+};*/
+
 struct MIPS {
 	int MAX_MEMORY = (1<<20), 				// Maximum memory
 		MAX_INSTRUCTIONS_MEMORY = 1000,	// Maximum memory instructions can occupy
@@ -14,11 +20,16 @@ struct MIPS {
 	    COL_ACCESS_DELAY = 0,
 	    ROW_ACCESS_DELAY = 0,
 	    NON_BLOCKING_MODE = 0,
-	    changed_reg = -1,
-	    BUFFER_UPDATE = 0,
-	    last_access_sw = 0;
+	    changed_reg = -1,			// register changed in statements other than lw and se
+	    BUFFER_UPDATE = 0;
 
 	short int memory[(1<<20)+1] = {0};			// Array to hold memory
+
+	unordered_map<int,int> reg_change,
+						   mem_change;		// not sure if we need mem change
+
+	// vector<QUEUE_OP> priority_instr;
+	vector<pair<int,int> > instr_queue;
 
 	int ROW_BUFFER = -1,
 		QUEUE_SIZE = 0,
@@ -27,7 +38,8 @@ struct MIPS {
 		changed_val = -1,
 		cycle_end = -1,
 		cycle_start = -1,
-		index_op = -1;
+		index_op = -1,
+		cycle_issue = -1;
 
 	unordered_map<string, int> reg_name_to_number, 	// Map of (conventional register name, register number)
 							   instructions_count,		// Map to hold count of instructions
@@ -176,9 +188,60 @@ struct MIPS {
 		return mem;
 	}
 
+	void reorder_priority() {
+		// TODO - New algorithm
+
+		if (instr_queue.empty()) return;
+		
+		// reorder here
+
+		// till here
+
+		index_op = instr_queue[0].first;
+		pair<string, int> temp = offset(instructions[index_op+2]);
+		
+		int reg1 = getRegister(index_op+1), delay = 0, reg;
+		if (!isNumber(temp.first.substr(1))) reg = reg_name_to_number[temp.first.substr(1)];
+		else reg = stoi(temp.first.substr(1));
+		if (ROW_BUFFER == -1) delay += ROW_ACCESS_DELAY, BUFFER_UPDATE += 1;
+		else if (ROW_BUFFER != temp.second) delay += 2*ROW_ACCESS_DELAY, BUFFER_UPDATE += 1;
+		ROW_BUFFER = temp.second;
+		delay += COL_ACCESS_DELAY;
+		cycle_start = cycle, cycle_end = cycle + delay;
+
+		if (instructions[index_op] == "lw") {
+			memory_changed = false;
+			ind_changing = reg1;	
+			changed_val = registers[reg1];
+		}
+		else {
+			BUFFER_UPDATE++;
+			int mem = registers[reg] + SZ_DRAM*temp.second;
+			int val = registers[getRegister(index_op+1)];
+			memory_changed = true;
+			ind_changing = mem;	
+			changed_val = val;	
+		}
+	}
+
+	void add_to_queue(int ind) {
+		QUEUE_SIZE += 1;
+		instr_queue.push_back({ind, cycle});
+		//  Add dependency
+		if (instructions[ind] == "lw") {
+			int reg = getRegister(ind+1);
+			if (reg_change.find(reg) != reg_change.end()) reg_change[reg] = cycle;
+			else reg_change.insert({reg, cycle});
+		}
+		reorder_priority();
+	}
+
+
+
 	void reduce_queue() {
 		assert(QUEUE_SIZE > 0);
 		QUEUE_SIZE--;
+
 		if (cycle_start==cycle_end) cycle_start--;
 		cout << "Cycle " << cycle_start+1 << "-" << cycle_end << ": Executed ";
 		for (int j=0; j<3; j++) cout << instructions[index_op+j] << " ";
@@ -191,10 +254,31 @@ struct MIPS {
 			cout << "$" << ind_changing << " = " << changed_val << endl;
 		}
 		cycle = cycle_end;
+
+		if (instructions[index_op] == "lw") {
+			if (reg_change[getRegister(index_op+1)] == cycle_issue) {
+				reg_change.erase(reg_change.find(getRegister(index_op+1)));
+			}
+		}
+
+		/*if (instructions[index_op] == "sw") {
+			pair<string, int> temp = offset(index_op+2);
+			int reg = 0, mem = 0;
+			if (!isNumber(temp.first.substr(1))) reg = reg_name_to_number[temp.first.substr(1)];
+			else reg = stoi(temp.first.substr(1));
+			int mem = registers[reg] + SZ_DRAM*temp.second;
+
+			if (mem_change[mem] == cycle_issue) {
+				reg_change.erase(reg_change.find(getRegister[ind+1]));
+			}
+		}*/
+
+		instr_queue.erase(instr_queue.begin());
+		reorder_priority();
 	}
 
 	bool not_safe(int ind) {
-		return (QUEUE_SIZE==1 && !memory_changed && ind_changing == getRegister(ind));
+		return (QUEUE_SIZE>=1 && reg_change.find(getRegister(ind)) != reg_change.end());
 	}
 
 	bool empty_queue() {
@@ -246,7 +330,7 @@ struct MIPS {
 	}
 
 	int lw(int ind) {
-		last_access_sw = 1;
+		
 		pair<string,int> temp = offset(instructions[ind+2]);
 		int reg, mask=0, delay=0;
 		if (!isNumber(temp.first.substr(1))) reg = reg_name_to_number[temp.first.substr(1)];
@@ -262,7 +346,8 @@ struct MIPS {
 			mask += 8;
 		}
 
-		if (ROW_BUFFER == -1) delay += ROW_ACCESS_DELAY, BUFFER_UPDATE += 1;
+		add_to_queue(ind);
+		/*if (ROW_BUFFER == -1) delay += ROW_ACCESS_DELAY, BUFFER_UPDATE += 1;
 		else if (ROW_BUFFER != temp.second) delay += 2*ROW_ACCESS_DELAY, BUFFER_UPDATE += 1;
 		ROW_BUFFER = temp.second;
 		delay += COL_ACCESS_DELAY;
@@ -273,14 +358,14 @@ struct MIPS {
 			ind_changing = reg1;	
 			changed_val = registers[reg1];
 			QUEUE_SIZE += 1;
-		}
+		}*/
 		
 		// registers[getRegister(ind+1)] = memory[mem] + (memory[mem+1] << 8) + (memory[mem+2] << 16) + (memory[mem+3] << 24);
 		return 0;
 	}
 
 	int sw(int ind) {
-		last_access_sw = 1;
+	
 		pair<string,int> temp = offset(instructions[ind+2]);
 		int reg, mask=0, delay = 0;
 		if (!isNumber(temp.first.substr(1))) reg = reg_name_to_number[temp.first.substr(1)];
@@ -295,7 +380,8 @@ struct MIPS {
 			mask += 8;
 		}
 
-		if (ROW_BUFFER == -1) delay += ROW_ACCESS_DELAY, BUFFER_UPDATE++;
+		add_to_queue(ind);
+		/*if (ROW_BUFFER == -1) delay += ROW_ACCESS_DELAY, BUFFER_UPDATE++;
 		else if (ROW_BUFFER != temp.second) delay += 2*ROW_ACCESS_DELAY, BUFFER_UPDATE++;
 		ROW_BUFFER = temp.second;
 		delay += COL_ACCESS_DELAY;
@@ -307,7 +393,7 @@ struct MIPS {
 			ind_changing = mem;	
 			changed_val = val;
 			QUEUE_SIZE += 1;
-		}
+		}*/
 		/*memory[mem] = val & MAX_VALUE_IN_MEMORY, memory[mem+1] = (val >> 8) & MAX_VALUE_IN_MEMORY, 
 		memory[mem+2] = (val >> 16) & MAX_VALUE_IN_MEMORY, memory[mem+3] = (val >> 24) & MAX_VALUE_IN_MEMORY;*/
 		// for (int i=0; i<4; i++) cout << memory[mem+i] << " \n"[i==3];
@@ -477,10 +563,7 @@ struct MIPS {
 			}
 		}
 		while (!empty_queue()) reduce_queue();
-		if (last_access_sw) {
-			cout << "Cycle " << cycle+1 << "-" << cycle + ROW_ACCESS_DELAY - 1 << ": Writing back to memory" << endl;
-			cycle += ROW_ACCESS_DELAY;
-		}
+		
 		assert(i==n);
 		cout << "--------------------------------------------------------------" << endl;
 		cout << "Number of clock cycles: " << cycle << endl;

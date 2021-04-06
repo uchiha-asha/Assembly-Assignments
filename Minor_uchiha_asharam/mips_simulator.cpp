@@ -477,10 +477,7 @@ struct MIPS {
 			}
 		}
 		while (!empty_queue()) reduce_queue();
-		if (last_access_sw) {
-			cout << "Cycle " << cycle+1 << "-" << cycle + ROW_ACCESS_DELAY - 1 << ": Writing back to memory" << endl;
-			cycle += ROW_ACCESS_DELAY;
-		}
+		
 		assert(i==n);
 		cout << "--------------------------------------------------------------" << endl;
 		cout << "Number of clock cycles: " << cycle << endl;
