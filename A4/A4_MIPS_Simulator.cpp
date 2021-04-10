@@ -54,6 +54,7 @@ struct MIPS {
 		return !(set.find(i) == set.end());
 	}
 	
+	// Created post minor
 	void prioritize(int i){
 		// shift ith element to front of the queue
 		int val = instr_queue[i].first;
@@ -184,6 +185,7 @@ struct MIPS {
 		return mem;
 	}
 	
+	// Created post minor
 	void reorder_priority() {
 		// finds the most prior DRAM request and executes it
 		if (instr_queue.empty()) return;
@@ -191,12 +193,16 @@ struct MIPS {
 		// reorder the priority to find the most prior element
 		unordered_set<int> reg_aff;
 		for(int i = 0; i < instr_queue.size(); i++){
-			int index = instr_queue[i].first;
+			int index = instr_queue[i].first, reg = 0;
 			pair<string, int> temp = offset(instructions[index+2]);
+			if (!isNumber(temp.first.substr(1))) reg = reg_name_to_number[temp.first.substr(1)];
+			else reg = stoi(temp.first.substr(1));
+
+			int mem = temp.second + registers[reg];
 			int registerVal = getRegister(index+1);
-			if(find(reg_aff, registerVal)) continue;
+			if(find(reg_aff, registerVal) || find(reg_aff, reg)) continue;
 			reg_aff.insert(registerVal);
-			if(temp.second == ROW_BUFFER){
+			if(mem/SZ_DRAM == ROW_BUFFER){
 				prioritize(i);
 				
 				break;
@@ -210,14 +216,16 @@ struct MIPS {
 		int reg1 = getRegister(index_op+1), delay = 0, reg, delay1 = 0;
 		if (!isNumber(temp.first.substr(1))) reg = reg_name_to_number[temp.first.substr(1)];
 		else reg = stoi(temp.first.substr(1));
+
+		int mem = registers[reg] + temp.second;
 		if (ROW_BUFFER == -1) delay += ROW_ACCESS_DELAY, BUFFER_UPDATE += 1;
-		else if (ROW_BUFFER != temp.second){
+		else if (ROW_BUFFER != mem/SZ_DRAM){
 			delay += ROW_ACCESS_DELAY;
 			BUFFER_UPDATE += 1;
 			cout << "Cycle " << cycle+1 << "-" << cycle+ROW_ACCESS_DELAY << ": DRAM write-back" << endl;
 			delay1 += ROW_ACCESS_DELAY;
 		}
-		ROW_BUFFER = temp.second;
+		ROW_BUFFER = mem/SZ_DRAM;
 		delay += COL_ACCESS_DELAY;
 		cycle_start = cycle + delay1, cycle_end = cycle_start + delay;
 
@@ -228,7 +236,7 @@ struct MIPS {
 		}
 		else {
 			BUFFER_UPDATE++;
-			int mem = registers[reg] + SZ_DRAM*temp.second;
+			// int mem = registers[reg] + SZ_DRAM*temp.second;
 			int val = registers[getRegister(index_op+1)];
 			memory_changed = true;
 			ind_changing = mem;	
@@ -259,8 +267,8 @@ struct MIPS {
 		cout << ":::::: ";
 		if (memory_changed) {
 			// print the memory changed
-			cout << "memory address (" << ind_changing/SZ_DRAM << "," << ind_changing%SZ_DRAM << "-" << 
-				    ind_changing%SZ_DRAM + 3 << ") = " << changed_val << endl;
+			cout << "memory address (" <<  ind_changing << "-" << 
+				    ind_changing + 3 << ") = " << changed_val << endl;
 		}
 		else {
 			cout << "$" << regs[ind_changing] << " = " << changed_val << endl;
@@ -345,8 +353,8 @@ struct MIPS {
 		int reg, mask=0, delay=0;
 		if (!isNumber(temp.first.substr(1))) reg = reg_name_to_number[temp.first.substr(1)];
 		else reg = stoi(temp.first.substr(1));
-		int mem = registers[reg] + SZ_DRAM*temp.second;
-		if (mem < MAX_INSTRUCTIONS_MEMORY || mem >= MAX_MEMORY || registers[reg] >= SZ_DRAM) return -1;
+		int mem = registers[reg] + temp.second;
+		if (mem < MAX_INSTRUCTIONS_MEMORY || mem >= MAX_MEMORY) return -1;
 		int reg1 = getRegister(ind+1);
 		registers[reg1] = 0;
 		for (int i=0; i<4; i++) {
@@ -365,8 +373,8 @@ struct MIPS {
 		int reg, mask=0, delay = 0;
 		if (!isNumber(temp.first.substr(1))) reg = reg_name_to_number[temp.first.substr(1)];
 		else reg = stoi(temp.first.substr(1));
-		int mem = registers[reg] + SZ_DRAM*temp.second;
-		if (mem < MAX_INSTRUCTIONS_MEMORY || mem >= MAX_MEMORY || registers[reg] >= SZ_DRAM) return -1;
+		int mem = registers[reg] + temp.second;
+		if (mem < MAX_INSTRUCTIONS_MEMORY || mem >= MAX_MEMORY ) return -1;
 		int val = registers[getRegister(ind+1)];
 		for (int i=0; i<4; i++) {
 			if ((mem+i)%SZ_DRAM == 0 && i) return -1;
@@ -395,7 +403,7 @@ struct MIPS {
 		for (int i=1000; i<MAX_MEMORY; i+=4) {
 			int res = 0, mask = 0;
 			for (int j=0; j<4; j++) res +=  (memory[j+i] << mask), mask += 8;
-			if (res) cout << "M(" << i/SZ_DRAM << "," << i%SZ_DRAM << "-" << i%SZ_DRAM+3 << "):" << res << " ";
+			if (res) cout << "M("  << i << "-" << i+3 << "):" << res << " ";
 		}
 		cout << endl;
 	}
@@ -467,6 +475,7 @@ struct MIPS {
 					cout << "Trying to access invalid instruction in memory" << endl;
 					return -1;
 				}
+				changed_reg = -2;
 				instr_sz = 4;
 				instructions_count["beq"]++, cycle++;
 			}
@@ -476,6 +485,7 @@ struct MIPS {
 				if (i==-1) {
 					return -1;
 				}
+				changed_reg = -2;
 				instr_sz = 4;
 				instructions_count["bne"]++, cycle++;
 			}
@@ -489,6 +499,7 @@ struct MIPS {
 				i = j(i);
 				instructions_count["j"]++, cycle++;
 				instr_sz = 2;
+				changed_reg = -2;
 				if (i==-1) {
 					cout << "Trying to access invalid instruction in memory" << endl;
 					return -1;
@@ -532,7 +543,12 @@ struct MIPS {
 			else i += 1;
 			
 			if (QUEUE_SIZE>0 && cycle==cycle_end) reduce_queue();
-			if (changed_reg != -1) {
+			if (changed_reg == -2) {
+				cout << "Cycle " << cycle << ": Executed ";
+				for (int j=0; j<instr_sz; j++) cout << instructions[temp+j] << " ";
+				cout << endl;
+			}
+			else if (changed_reg != -1) {
 				cout << "Cycle " << cycle << ": Executed ";
 				for (int j=0; j<instr_sz; j++) cout << instructions[temp+j] << " ";
 				cout << "::::: $" << changed_reg << " = " << registers[changed_reg] << endl;  
