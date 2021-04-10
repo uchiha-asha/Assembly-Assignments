@@ -132,8 +132,7 @@ add $s5 $s3 $s2
 \end{enumerate}
 \subsection{Weakness}
 \begin{enumerate}
-    \item It is possible that some add/mul/sub/addi may be blocked and further add and mul may be executed. This has not been done. An add operation which blocks the instruction parsing, stops execution.
-    \item Any lw/sw may be added to queue and we may proceed further to read other instructions instead of blocking the reader at the instant.
+    \item It is possible that some add/mul/sub/addi may be blocked and further add and mul may be executed. This has not been done. An add operation which blocks the instruction parsing, stops execution. In other words, let us say some add occurs and can not be executed because it uses some other memory. We may bypass it and execute other instructions. This particular instruction may be executed later.
 \end{enumerate}
 
 \section{Testing}

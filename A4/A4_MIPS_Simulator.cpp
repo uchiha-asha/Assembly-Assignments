@@ -49,12 +49,12 @@ struct MIPS {
 		}
 	}
 	
+	//----------------------------------------Post Minor starts----------------------------------------
 	bool find(unordered_set<int> set, int i){
 		// check if an element is in the set
 		return !(set.find(i) == set.end());
 	}
 	
-	// Created post minor
 	void prioritize(int i){
 		// shift ith element to front of the queue
 		int val = instr_queue[i].first;
@@ -62,6 +62,7 @@ struct MIPS {
 		instr_queue.erase(instr_queue.begin()+i);
 		instr_queue.insert(instr_queue.begin()+0,{val, cyc});
 	}
+	//----------------------------------------Post Minor ends----------------------------------------
 	
 	bool isNumber(string str) {
 		// check if a string is valid integer
@@ -185,7 +186,7 @@ struct MIPS {
 		return mem;
 	}
 	
-	// Created post minor
+	//----------------------------------------Post Minor starts----------------------------------------
 	void reorder_priority() {
 		// finds the most prior DRAM request and executes it
 		if (instr_queue.empty()) return;
@@ -290,6 +291,7 @@ struct MIPS {
 		// check if a given register is being modified or not
 		return modifiable?(getRegister(ind)==0):(QUEUE_SIZE>=1 && reg_change.find(getRegister(ind)) != reg_change.end());
 	}
+	//----------------------------------------Post Minor ends----------------------------------------
 	
 	bool empty_queue() {
 		// check of queue is empty
