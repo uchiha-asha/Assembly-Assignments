@@ -1,8 +1,0 @@
-addi $t0, $t0, 3
-sw $t0, 1($zero)
-
-loop:
-	beq $t0, $t1, exit
-	addi $t1, $t1, 1
-	j loop
-exit: 

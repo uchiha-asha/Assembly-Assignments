@@ -1,2 +1,0 @@
-tested t1 on (2,2) (10,2) (2,10) (2,4) (4,2) (0,0)
-tested many_registers_op on (4,2) (8,2) (0,0)
