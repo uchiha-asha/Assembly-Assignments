@@ -2,35 +2,23 @@
 
 using namespace std;
 
-/*struct QUEUE_OP {
-	int index_op = -1,
-		cycle_start = -1,
-		cycle_end = -1;
-};*/
-
 struct MIPS {
-	int MAX_MEMORY = (1<<20), 				// Maximum memory
-		MAX_INSTRUCTIONS_MEMORY = 1000,	// Maximum memory instructions can occupy
-		MAX_VALUE_IN_MEMORY = (1<<8)-1,		// Each memory address can store 1 byte
-		MAX_VALUE_IN_REGISTER = (1ll<<32)-1, // Max value in memory
-	    PC = 0,								// PC stores the address of current instruction
-	    cycle = 0,							// Number of cycle cycle
-	    registers[32] = {0},			// Values of registers
+	int MAX_MEMORY = (1<<20), 									// Maximum memory
+		MAX_INSTRUCTIONS_MEMORY = 1000,							// Maximum memory instructions can occupy
+		MAX_VALUE_IN_MEMORY = (1<<8)-1,							// Each memory address can store 1 byte
+		MAX_VALUE_IN_REGISTER = (1ll<<32)-1, 					// Max value in memory
+	    PC = 0,													// PC stores the address of current instruction
+	    cycle = 0,												// Number of cycle cycle
+	    registers[32] = {0},									// Values of registers
 	    SZ_DRAM = (1<<10),
 	    COL_ACCESS_DELAY = 0,
 	    ROW_ACCESS_DELAY = 0,
 	    NON_BLOCKING_MODE = 0,
-	    changed_reg = -1,			// register changed in statements other than lw and se
+	    changed_reg = -1,										// register changed in statements other than lw and se
 	    BUFFER_UPDATE = 0;
-
-	short int memory[(1<<20)+1] = {0};			// Array to hold memory
-
-	unordered_map<int,int> reg_change,
-						   mem_change;		// not sure if we need mem change
-
-	// vector<QUEUE_OP> priority_instr;
+	short int memory[(1<<20)+1] = {0};							// Array to hold memory
+	unordered_map<int,int> reg_change, mem_change;				// not sure if we need mem change
 	vector<pair<int,int> > instr_queue;
-
 	int ROW_BUFFER = -1,
 		QUEUE_SIZE = 0,
 		memory_changed = 0,
@@ -40,56 +28,64 @@ struct MIPS {
 		cycle_start = -1,
 		index_op = -1,
 		cycle_issue = -1;
+	unordered_map<string, int> reg_name_to_number, 				// Map of (conventional register name, register number)
+							   instructions_count,				// Map to hold count of instructions
+							   branches;						// Map of (branch label, pointer to the branch in instructions)
 
-	unordered_map<string, int> reg_name_to_number, 	// Map of (conventional register name, register number)
-							   instructions_count,		// Map to hold count of instructions
-							   branches;			// Map of (branch label, pointer to the branch in instructions)
-
-	string input_file;									// input file
-	vector<string> instructions, regs, instructions_name;			// stores the input instructions
-
+	string input_file;											// input file
+	vector<string> instructions, regs, instructions_name;		// stores the input instructions
+	
 	void initialize() {
-		regs = {"zero", "at", "v0", "v1", "a0", "a1", "a2", "a3",
-							   "t0", "t1", "t2", "t3", "t4", "t5", "t6", "t7",
-							   "s0", "s1", "s2", "s3", "s4", "s5", "s6", "s7",
-							   "t8", "t9", "k0", "k1", "gp", "sp", "fp", "ra"};		// All the valid registers
-
+		regs = {"zero", "at", "v0", "v1", "a0", "a1", "a2", "a3", "t0", "t1", "t2", "t3","t4",
+				"t5", "t6", "t7", "s0", "s1", "s2", "s3", "s4", "s5", "s6", "s7", "t8", "t9",
+				"k0", "k1", "gp", "sp", "fp", "ra"};			// All the valid registers
 		instructions_name = {"add", "sub", "mul", "beq", "bne", 
-											"slt", "j", "lw", "sw", "addi"};		// All the valid instructions
-
+							"slt", "j", "lw", "sw", "addi"};	// All the valid instructions
 		for (int i=0; i<regs.size(); i++) {
 			reg_name_to_number.insert({regs[i], i});
 		}
-
 		for (int i=0; i<instructions_name.size(); i++) {
 			instructions_count.insert({instructions_name[i], 0});
 		}
-
 	}
-
+	
+	bool find(unordered_set<int> set, int i){
+		// check if an element is in the set
+		return !(set.find(i) == set.end());
+	}
+	
+	void prioritize(int i){
+		// shift ith element to front of the queue
+		int val = instr_queue[i].first;
+		int cyc = instr_queue[i].second;
+		instr_queue.erase(instr_queue.begin()+i);
+		instr_queue.insert(instr_queue.begin()+0,{val, cyc});
+	}
+	
 	bool isNumber(string str) {
+		// check if a string is valid integer
 		int i = (str[0]=='-');
 		while (i<str.length()) {
 			if (str[i]<'0' || str[i]>'9') return false;
 			i++;
 		}
-		return true;// Check if a string is valid integer
+		return true;
 	}
-
+	
 	bool isValidRegister(string str) {
 		if (str[0] != '$') return false;
 		str = str.substr(1);
-		// cout << str << endl;
 		return reg_name_to_number.find(str) != reg_name_to_number.end() || 
-			   (isNumber(str) && stoi(str) >= 0 && stoi(str) < 32);// Check if a string represents valid register
+			(isNumber(str) && stoi(str) >= 0 && stoi(str) < 32);// Check if a string represents valid register
 	}
-
-	bool isValidInstruction(string str) { 	// check if a string represents valid instruction
+	
+	bool isValidInstruction(string str) {
+		// check if a string represents valid instruction
 		return instructions_count.find(str) != instructions_count.end();
 	}
-
-
-	pair<string,int> offset(string s) {		// parse the offset instructions
+	
+	pair<string,int> offset(string s) {
+		// parse the offset instructions
 		string off = "", reg = "";
 		int i=0, n=s.length();
 		while (i<n && s[i] != '(') off += s[i], i++;
@@ -98,12 +94,11 @@ struct MIPS {
 		if (i!=n-1 || !isNumber(off)) return {"",0};
 		return {reg, stoi(off)};
 	}
-
-	int lexParse() {	// Function to check the syntax of the input file and load instructions to memory
+	
+	int lexParse() {
+		// Function to check the syntax of the input file and load instructions to memory
 		int i = 0, n = instructions.size();
-
 		while (i<n) {
-			// cout << "ha" << endl;
 			PC += 4;
 			if (PC > MAX_INSTRUCTIONS_MEMORY) {
 				return -2;
@@ -168,35 +163,44 @@ struct MIPS {
 				branches.insert({s, PC});
 			}
 		}
-
 		memory[PC] = n;
 		PC += 4;
-
 		return 0;
 	}
-
+	
 	int getRegister(int ind) {
-		// INV :- instructions[ind] is a valid register
+		// returns the register number
+		// Condition :- instructions[ind] is a valid register
 		string s = instructions[ind].substr(1);
 		if (isNumber(s)) return stoi(s);
 		else return reg_name_to_number[s];
 	}
-
+	
 	int getInstructionMemory(int ind) {
+		// returns the index of the instruction in memory
 		int mem = isNumber(instructions[ind]) ? stoi(instructions[ind]) : branches[instructions[ind]];
 		if (mem >= PC || mem%4) return -1;
 		return mem;
 	}
-
+	
 	void reorder_priority() {
-		// TODO - New algorithm
-
+		// finds the most prior DRAM request and executes it
 		if (instr_queue.empty()) return;
 		
-		// reorder here
-
-		// till here
-
+		// reorder the priority to find the most prior element
+		unordered_set<int> reg_aff;
+		for(int i = 0; i < instr_queue.size(); i++){
+			int index = instr_queue[i].first;
+			pair<string, int> temp = offset(instructions[index+2]);
+			int registerVal = getRegister(index+1);
+			if(find(reg_aff, registerVal)) continue;
+			if(temp.second == ROW_BUFFER){
+				prioritize(i);
+				reg_aff.insert(registerVal);
+				break;
+			}
+		}
+		
 		index_op = instr_queue[0].first;
 		pair<string, int> temp = offset(instructions[index_op+2]);
 		
@@ -204,7 +208,10 @@ struct MIPS {
 		if (!isNumber(temp.first.substr(1))) reg = reg_name_to_number[temp.first.substr(1)];
 		else reg = stoi(temp.first.substr(1));
 		if (ROW_BUFFER == -1) delay += ROW_ACCESS_DELAY, BUFFER_UPDATE += 1;
-		else if (ROW_BUFFER != temp.second) delay += 2*ROW_ACCESS_DELAY, BUFFER_UPDATE += 1;
+		else if (ROW_BUFFER != temp.second){
+			delay += 2*ROW_ACCESS_DELAY, BUFFER_UPDATE += 1;
+			cout << "Cycle " << cycle_start+1 << "-" << cycle_start+ROW_ACCESS_DELAY << ": DRAM write-back" << endl;
+		}
 		ROW_BUFFER = temp.second;
 		delay += COL_ACCESS_DELAY;
 		cycle_start = cycle, cycle_end = cycle + delay;
@@ -223,11 +230,12 @@ struct MIPS {
 			changed_val = val;	
 		}
 	}
-
+	
 	void add_to_queue(int ind) {
 		QUEUE_SIZE += 1;
 		instr_queue.push_back({ind, cycle});
-		//  Add dependency
+		
+		// Add dependency of registers
 		if (instructions[ind] == "lw") {
 			int reg = getRegister(ind+1);
 			if (reg_change.find(reg) != reg_change.end()) reg_change[reg] = cycle;
@@ -235,32 +243,31 @@ struct MIPS {
 		}
 		reorder_priority();
 	}
-
-
-
+	
 	void reduce_queue() {
 		assert(QUEUE_SIZE > 0);
 		QUEUE_SIZE--;
-
-		if (cycle_start==cycle_end) cycle_start--;
+		
+		if (cycle_start == cycle_end) cycle_start--;
 		cout << "Cycle " << cycle_start+1 << "-" << cycle_end << ": Executed ";
 		for (int j=0; j<3; j++) cout << instructions[index_op+j] << " ";
 		cout << ":::::: ";
 		if (memory_changed) {
+			// print the memory changed
 			cout << "memory address (" << ind_changing/SZ_DRAM << "," << ind_changing%SZ_DRAM << "-" << 
 				    ind_changing%SZ_DRAM + 3 << ") = " << changed_val << endl;
 		}
 		else {
-			cout << "$" << ind_changing << " = " << changed_val << endl;
+			cout << "$" << regs[ind_changing] << " = " << changed_val << endl;
 		}
 		cycle = cycle_end;
-
+		
 		if (instructions[index_op] == "lw") {
 			if (reg_change[getRegister(index_op+1)] == cycle_issue) {
 				reg_change.erase(reg_change.find(getRegister(index_op+1)));
 			}
 		}
-
+		
 		/*if (instructions[index_op] == "sw") {
 			pair<string, int> temp = offset(index_op+2);
 			int reg = 0, mem = 0;
@@ -272,65 +279,74 @@ struct MIPS {
 				reg_change.erase(reg_change.find(getRegister[ind+1]));
 			}
 		}*/
-
+		
 		instr_queue.erase(instr_queue.begin());
 		reorder_priority();
 	}
-
-	bool not_safe(int ind) {
-		return (QUEUE_SIZE>=1 && reg_change.find(getRegister(ind)) != reg_change.end());
+	
+	bool not_safe(int ind, bool modifiable = false) {
+		// check if a given register is being modified or not
+		return modifiable?(getRegister(ind)==0):(QUEUE_SIZE>=1 && reg_change.find(getRegister(ind)) != reg_change.end());
 	}
-
+	
 	bool empty_queue() {
+		// check of queue is empty
 		return QUEUE_SIZE==0;
 	}
-
+	
 	void add(int ind) {
-		while (not_safe(ind+2) || not_safe(ind+3)) reduce_queue();
+		// execute an add instruction
+		while (not_safe(ind+1, true) || not_safe(ind+2) || not_safe(ind+3)) reduce_queue();
 		long long int sum = registers[getRegister(ind+2)] + 0ll + registers[getRegister(ind+3)];
 		changed_reg = getRegister(ind+1);
 		registers[getRegister(ind+1)] = sum & MAX_VALUE_IN_REGISTER;
 	}
-
+	
 	void sub(int ind) {
-		while (not_safe(ind+2) || not_safe(ind+3)) reduce_queue();
+		// execute a sub instruction
+		while (not_safe(ind+1, true) || not_safe(ind+2) || not_safe(ind+3)) reduce_queue();
 		long long int dif = registers[getRegister(ind+2)] + 0ll - registers[getRegister(ind+3)];
 		changed_reg = getRegister(ind+1);
 		registers[getRegister(ind+1)] = dif & MAX_VALUE_IN_REGISTER;
 	}
-
+	
 	void mul(int ind) {
-		while (not_safe(ind+2) || not_safe(ind+3)) reduce_queue();
+		// execute a mul instruction
+		while (not_safe(ind+1, true) || not_safe(ind+2) || not_safe(ind+3)) reduce_queue();
 		long long int prod = registers[getRegister(ind+2)] * 1ll * registers[getRegister(ind+3)];
 		changed_reg = getRegister(ind+1);
 		registers[getRegister(ind+1)] = prod & MAX_VALUE_IN_REGISTER;
 	}
-
+	
 	int beq(int ind) {
+		// execute a beq instruction
 		while (not_safe(ind+2) || not_safe(ind+3) || not_safe(ind+1)) reduce_queue();
 		if (getInstructionMemory(ind+3) == -1) return -1; 
 		return (registers[getRegister(ind+1)] == registers[getRegister(ind+2)]) ? memory[getInstructionMemory(ind+3)] : ind+4;
 	}
-
+	
 	int bne(int ind) {
+		// execute a bne instruction
 		while (not_safe(ind+2) || not_safe(ind+3) || not_safe(ind+1)) reduce_queue();
 		if (getInstructionMemory(ind+3) == -1) return -1; 
 		return (registers[getRegister(ind+1)] != registers[getRegister(ind+2)]) ? memory[getInstructionMemory(ind+3)] : ind+4;
 	}
-
+	
 	void slt(int ind) {
+		// execute a slt instruction
 		while (not_safe(ind+2) || not_safe(ind+3)) reduce_queue();
 		changed_reg = getRegister(ind+1);
 		registers[getRegister(ind+1)] = registers[getRegister(ind+2)] < registers[getRegister(ind+3)];
 	}
-
+	
 	int j(int ind) {
+		// execute a j instruction
 		int mem = getInstructionMemory(ind+1);
 		return (mem==-1) ? -1 : memory[mem];
 	}
-
+	
 	int lw(int ind) {
-		
+		// execute an lw instruction
 		pair<string,int> temp = offset(instructions[ind+2]);
 		int reg, mask=0, delay=0;
 		if (!isNumber(temp.first.substr(1))) reg = reg_name_to_number[temp.first.substr(1)];
@@ -341,11 +357,9 @@ struct MIPS {
 		registers[reg1] = 0;
 		for (int i=0; i<4; i++) {
 			if ((mem+i)%SZ_DRAM == 0 && i) return -1;
-			// cout << memory[mem+i] << endl;
 			registers[reg1] += (memory[mem+i] << mask);
 			mask += 8;
 		}
-
 		add_to_queue(ind);
 		/*if (ROW_BUFFER == -1) delay += ROW_ACCESS_DELAY, BUFFER_UPDATE += 1;
 		else if (ROW_BUFFER != temp.second) delay += 2*ROW_ACCESS_DELAY, BUFFER_UPDATE += 1;
@@ -365,7 +379,7 @@ struct MIPS {
 	}
 
 	int sw(int ind) {
-	
+		// execute an sw instruction
 		pair<string,int> temp = offset(instructions[ind+2]);
 		int reg, mask=0, delay = 0;
 		if (!isNumber(temp.first.substr(1))) reg = reg_name_to_number[temp.first.substr(1)];
@@ -379,7 +393,6 @@ struct MIPS {
 			// cout << memory[mem+i] << endl;
 			mask += 8;
 		}
-
 		add_to_queue(ind);
 		/*if (ROW_BUFFER == -1) delay += ROW_ACCESS_DELAY, BUFFER_UPDATE++;
 		else if (ROW_BUFFER != temp.second) delay += 2*ROW_ACCESS_DELAY, BUFFER_UPDATE++;
@@ -399,14 +412,15 @@ struct MIPS {
 		// for (int i=0; i<4; i++) cout << memory[mem+i] << " \n"[i==3];
 		return 0;
 	}
-
+	
 	void addi(int ind) {
-		while (not_safe(ind+2)) reduce_queue();
+		// execute an addi instruction
+		while (not_safe(ind+1, true) || not_safe(ind+2)) reduce_queue();
 		long long int sum = registers[getRegister(ind+2)] + 0ll + stoi(instructions[ind+3]);
 		changed_reg = getRegister(ind+1);
 		registers[getRegister(ind+1)] = sum & MAX_VALUE_IN_REGISTER;
 	}
-
+	
 	void printRegistersAndMemory() {
 		cout << endl << "-------------------------Register Contents----------------------------" << endl;
 		for (int i=0; i<32; i++) {
@@ -422,21 +436,16 @@ struct MIPS {
 	}
 
 	void read_file() {
-
 		cout << "Enter file name: ";
 		cin >> input_file;
-
 		cout << "ROW_ACCESS_DELAY: ";
 		cin >> ROW_ACCESS_DELAY;
-
 		cout << "COL_ACCESS_DELAY: ";
 		cin >> COL_ACCESS_DELAY;
-
 		cout << "Only Dram Mode (0): ";
 		cin >> NON_BLOCKING_MODE;
-
 		freopen(input_file.c_str(), "r", stdin);
-
+		
 		// Reading the input file
 		string instruction;
 		while (cin >> instruction) {
@@ -451,20 +460,18 @@ struct MIPS {
 			if (s != "") instructions.push_back(s);	
 		}
 	}
-
+	
 	int simulate() {
 		initialize();
 		read_file();
-
-		// lex and parse the input instructions
-		int res = lexParse();
-
+		int res = lexParse();									// lex and parse the input instructions
+		cout << endl;
 		if (res == -1) {
 			cout << "Invalid syntax" << endl;
 			return -1;
 		}
 		else if (res == -2) {
-			cout << "Memory is full! Don't write too much instructions you noob ;)" << endl;
+			cout << "Memory is full! Don't write too much instructions, you noob ;)" << endl;
 			return -1;
 		}
 		cout << "-------------------------------------------------------------" << endl;
@@ -514,10 +521,9 @@ struct MIPS {
 					cout << "Trying to access invalid instruction in memory" << endl;
 					return -1;
 				}
-				
 			}
 			else if (instructions[i]=="lw") {
-				while (!empty_queue()) reduce_queue();
+				// while (!empty_queue()) reduce_queue();
 				instructions_count["lw"]++, cycle++;
 				int res = lw(i);
 				if (res == -1) {
@@ -529,10 +535,9 @@ struct MIPS {
 				cout << endl;
 				if (!NON_BLOCKING_MODE) reduce_queue();
 				i += 3;
-				
 			}
 			else if (instructions[i]=="sw") {
-				while (!empty_queue()) reduce_queue();
+				// while (!empty_queue()) reduce_queue();
 				instructions_count["sw"]++, cycle++;
 				int res = sw(i);
 				if (res == -1) {
@@ -553,16 +558,20 @@ struct MIPS {
 			}
 			else i += 1;
 			
-			if (QUEUE_SIZE==1 && cycle==cycle_end) reduce_queue();
-			// printRegisters();
+			if (QUEUE_SIZE>0 && cycle==cycle_end) reduce_queue();
 			if (changed_reg != -1) {
-
 				cout << "Cycle " << cycle << ": Executed ";
 				for (int j=0; j<4; j++) cout << instructions[temp+j] << " ";
 				cout << "::::: $" << changed_reg << " = " << registers[changed_reg] << endl;  
 			}
 		}
+		
 		while (!empty_queue()) reduce_queue();
+		
+		if(ROW_BUFFER != -1){
+			cout << "Cycle " << cycle+1 << "-" << cycle+ROW_ACCESS_DELAY << ": DRAM write-back" << endl;
+			cycle += ROW_ACCESS_DELAY;
+		}
 		
 		assert(i==n);
 		cout << "--------------------------------------------------------------" << endl;
@@ -570,14 +579,10 @@ struct MIPS {
 		cout << "Buffer Updates: " << BUFFER_UPDATE << endl;
 		cout << "Frquency of instructions:" << endl;
 		for (auto ele : instructions_count) cout << ele.first << ":" << ele.second << "  ";
-
 		printRegistersAndMemory();
-		cout << endl << "Done" << endl;
-
+		cout << "--------------------------------------------------------------" << endl;
 		return 0;
 	}
-
-
 };
 
 
