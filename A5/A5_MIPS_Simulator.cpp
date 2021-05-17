@@ -14,9 +14,21 @@ int MAX_MEMORY = (1<<20), 										// Maximum memory
 	MAX_QUEUE = 6,												// Maximum size of MRM Queue
 	ROW_ACCESS_DELAY,
 	COL_ACCESS_DELAY,
+	row_buffer = -1,											// Row copied in row buffer
+	col_accessed = -1,											// Column last accessed stored in cache
 	N, M;
+
 short int dram[(1<<20)+1] = {0};								// DRAM, memory array
 vector<vector<int>> MRM;										// Memory Request Queue
+
+int stats = 0,
+	// 0 if finished, 1 if col access left, 2 if row copying left, 3 if writeback left
+	cycles_left = 0,											// cycles remaining in completing current instruction
+	queue_status = 1,											// 0 if reordering, 1 otherwise
+	stop_current = 0,											// stop execution of current request
+	reorder_left = 0;											// cycles remaining in reordering
+
+vector<int> curr_request;										// current request being processed
 
 struct core{
 	int index,													// Index of the current core
@@ -42,6 +54,9 @@ struct core{
 	int curr_instruction = 0,									// current instruction being processed
 		status = 1;												// 1 if last instruction is finished, 0 if waiting
 																// 5 if file is finished
+	
+	int recieve = 0,											// 1 if recieved value from MRM
+		index_op, lwCount = 0;
 	
 	//--------------------------------------- Helper and Checker Functions ---------------------------------------
 	
@@ -118,9 +133,10 @@ struct core{
 	
 	void read_file(string input_file) {
 		// read the input file
-		freopen(input_file.c_str(), "r", stdin);
+		fstream in;
+		in.open(input_file, ios::in);
 		string instruction;
-		while (cin >> instruction) {
+		while (in >> instruction) {
 			string s = "";
 			for (auto c : instruction) {
 				if (c==',') {
@@ -133,7 +149,7 @@ struct core{
 		}
 		
 		// open a file for output
-		output.open("t" + to_string(index) + "_out.txt", ios::out);
+		output.open("t" + to_string(index + 1) + "_out.txt", ios::out);
 	}
 	
 	int lexParse() {
@@ -294,11 +310,13 @@ struct core{
 		if (mem >= MAX_MEMORY) return -1;
 		int reg1 = getRegister(ind+1);
 		registers[reg1] = 0;
-		// for (int i=0; i<4; i++) {
-			// if ((mem+i)%SZ_DRAM == 0 && i) return -1;
-			// registers[reg1] += (memory[mem+i] << mask);
-			// mask += 8;
-		// }
+		for (int i=0; i<4; i++) {
+			if ((mem+i)%SZ_DRAM == 0 && i) return -1;
+			registers[reg1] += (dram[mem+i] << mask);
+			mask += 8;
+		}
+		lwCount ++;
+		popRequest(ind+1);
 		memRequest(ind);
 		return 0;
 	}
@@ -312,13 +330,12 @@ struct core{
 		int mem = registers[reg] + temp.second;
 		if (mem >= MAX_MEMORY) return -1;
 		int val = registers[getRegister(ind+1)];
-		// for (int i=0; i<4; i++) {
-			// if ((mem+i)%SZ_DRAM == 0 && i) return -1;
-			// memory[mem+i] = (val >> mask) & MAX_VALUE_IN_MEMORY;
-			// mask += 8;
-		// }
+		for (int i=0; i<4; i++) {
+			if ((mem+i)%SZ_DRAM == 0 && i) return -1;
+			dram[mem+i] = (val >> mask) & MAX_VALUE_IN_MEMORY;
+			mask += 8;
+		}
 		memRequest(ind);
-		popRequest(ind+1);
 		return 0;
 	}
 	
@@ -344,11 +361,13 @@ struct core{
 			pauseInstructions(ind);
 			return;
 		}
-		QUEUE_SIZE += 1;
+		QUEUE_SIZE ++;
 		vector<int> temp;
 		temp.push_back(index);
 		temp.push_back(ind);
 		temp.push_back(cycle);
+		temp.push_back(0);
+		MRM.push_back(temp);
 		
 		// Add dependency of registers
 		if (instructions[ind] == "lw") {
@@ -366,15 +385,27 @@ struct core{
 	
 	void nextCycle(){
 		// operate the nextCycle
+		int temp = -1000;
 		if(status == 5) return;
-		if(curr_instruction >= instructions.size()){
+		if(lwCount == 0 && curr_instruction >= instructions.size()){
 			status = 5;
 			printContents();
 			return;
 		}
-		int temp = processInstruction(curr_instruction);
+		if(recieve == 1 && instructions[index_op] == "lw"){
+			lwCount--;
+			memory_changed = 0;
+			ind_changing = getRegister(index_op+1);
+			changed_val = registers[ind_changing];
+			output_s = "Executed ";
+			for (int j=0; j<3; j++) output_s = output_s + instructions[index_op+j] + " ";
+			recieve = 0;
+		}
+		else{
+			temp = processInstruction(curr_instruction);
+		}
 		printCycle();
-		if(status == 1) curr_instruction = temp;
+		if(status == 1 && temp != -1000) curr_instruction = temp;
 		status = 1;
 		memory_changed = -1;
 	}
@@ -383,54 +414,56 @@ struct core{
 		// processes the instruction at index i
 		if (instructions[i]=="add") {
 			add(i);
-			i += 4;
 			output_s = "Executed ";
 			for (int j=0; j<4; j++) output_s = output_s + instructions[i+j] + " ";
 			if(status == 1) instructions_count["add"]++;
+			i += 4;
 		}
 		else if (instructions[i]=="sub") {
 			sub(i);
-			i += 4;
 			output_s = "Executed ";
 			for (int j=0; j<4; j++) output_s = output_s + instructions[i+j] + " ";
 			if(status == 1) instructions_count["sub"]++;
+			i += 4;
 		}
 		else if (instructions[i]=="mul") {
 			mul(i);
-			i += 4;
 			output_s = "Executed ";
 			for (int j=0; j<4; j++) output_s = output_s + instructions[i+j] + " ";
 			if(status == 1) instructions_count["mul"]++;
+			i += 4;
 		}
 		else if (instructions[i]=="beq") {
+			output_s = "Executed ";
+			for (int j=0; j<4; j++) output_s = output_s + instructions[i+j] + " ";
 			i = beq(i);
 			if (i==-1) {
 				cout << "Trying to access invalid instruction in memory." << endl;
 				return -1;
 			}
 			memory_changed = -1;
-			output_s = "Executed ";
-			for (int j=0; j<4; j++) output_s = output_s + instructions[i+j] + " ";
 			if(status == 1) instructions_count["beq"]++;
 		}
 		else if (instructions[i]=="bne") {
+			output_s = "Executed ";
+			for (int j=0; j<4; j++) output_s = output_s + instructions[i+j] + " ";
 			i = bne(i);
 			if (i==-1) {
 				return -1;
 			}
 			memory_changed = -1;
-			output_s = "Executed ";
-			for (int j=0; j<4; j++) output_s = output_s + instructions[i+j] + " ";
 			if(status == 1) instructions_count["bne"]++;
 		}
 		else if (instructions[i]=="slt") {
 			slt(i);
-			i += 4;
 			output_s = "Executed ";
 			for (int j=0; j<4; j++) output_s = output_s + instructions[i+j] + " ";
 			if(status == 1) instructions_count["slt"]++;
+			i += 4;
 		}
 		else if (instructions[i]=="j") {
+			output_s = "Executed ";
+			for (int j=0; j<2; j++) output_s = output_s + instructions[i+j] + " ";
 			i = j(i);
 			if(status == 1) instructions_count["j"]++;
 			memory_changed = -1;
@@ -438,8 +471,6 @@ struct core{
 				cout << "Trying to access invalid instruction in memory" << endl;
 				return -1;
 			}
-			output_s = "Executed ";
-			for (int j=0; j<2; j++) output_s = output_s + instructions[i+j] + " ";
 		}
 		else if (instructions[i]=="lw") {
 			int res = lw(i);
@@ -467,11 +498,11 @@ struct core{
 		}
 		else if (instructions[i]=="addi") {
 			addi(i);
-			i += 4;
 			memory_changed = -1;
 			output_s = "Executed ";
 			for (int j=0; j<4; j++) output_s = output_s + instructions[i+j] + " ";
 			if(status == 1) instructions_count["addi"]++;
+			i += 4;
 		}
 		else i += 1;
 		return i;
@@ -481,6 +512,11 @@ struct core{
 		if(status == 1){
 			output << "Cycle " << cycle << ":" << endl << endl;
 			output << output_s << endl;
+			if(recieve == 1 && instructions[index_op] == "sw"){
+				output_s = "Finished ";
+				for (int j=0; j<3; j++) output_s = output_s + instructions[index_op+j] + " ";
+				recieve = 0;
+			}
 			if(memory_changed == 0){
 				output << "Register $" << regs[ind_changing] << " contents changed." << endl;
 				output << "New value in $" << regs[ind_changing] << " : " << changed_val << endl;
@@ -490,6 +526,7 @@ struct core{
 				output << "New value at " << ind_changing << "-" << ind_changing + 4 << " : " << changed_val << endl;
 			}
 			output << "--------------------------------------------------------------" << endl;
+			output_s = "";
 		}
 	}
 	
@@ -510,19 +547,154 @@ struct core{
 		// check and remove an existing lw request being overwritten
 		if(reg_change.find(getRegister(ind)) != reg_change.end()){
 			int inst = reg_change[getRegister(ind)];
-			for(int i = 0; i < QUEUE_SIZE; i++){
+			int i;
+			for(i = 0; i < QUEUE_SIZE; i++){
 				if(MRM[i][0] == index && MRM[i][1] == inst){
 					MRM.erase(MRM.begin()+i);
 					QUEUE_SIZE --;
+					break;
 				}
 			}
+			if(i == QUEUE_SIZE) stop_current = 1;
+			reg_change.erase(reg_change.find(getRegister(ind)));
 		}
 	}
 };
 
-struct MRM{
+core CPU[16];
+
+void prioritize(int i){
+	// shift ith element to front of the queue
+	vector<int> some;
+	some.push_back(MRM[i][0]);
+	some.push_back(MRM[i][1]);
+	some.push_back(MRM[i][2]);
+	some.push_back(MRM[i][3]);
+	MRM.erase(MRM.begin()+i);
+	MRM.insert(MRM.begin()+0,some);
+}
+
+bool find(unordered_set<int> set, int i){
+	// check if an element is in the set
+	return !(set.find(i) == set.end());
+}
+
+void reorder(){
+	// finds the most prior DRAM request
+	int top = -1, topcol = -1, toprow = -1, topold = -1;
+	int stat = 0; // 0 means no condition, 1 means got a value 
+	unordered_set<int> reg_aff[N];
+	for(int i = 0; i < MRM.size(); i++){
+		int j = MRM[i][0], ind = MRM[i][1], reg = 0, wait = MRM[i][3];
+		
+		pair<string, int> temp = CPU[j].offset(CPU[j].instructions[ind+2]);
+		if (!CPU[j].isNumber(temp.first.substr(1))) reg = CPU[j].reg_name_to_number[temp.first.substr(1)];
+		else reg = stoi(temp.first.substr(1));
+		int mem = temp.second + CPU[j].registers[reg];
+		
+		int registerVal = CPU[j].getRegister(ind+1);
+		if(find(reg_aff[j], registerVal) || find(reg_aff[j], reg)) continue;
+		reg_aff[j].insert(registerVal);
+		if(topold == -1 && wait > 26){
+			topold = i;
+		}
+		else if(toprow == -1 && mem/SZ_DRAM == row_buffer){
+			toprow = i;
+		}
+		else if(topcol == -1 && mem == col_accessed){
+			topcol = i;
+		}
+	}
+	if(topcol != -1) top = topcol;
+	else if(topold != -1) top = topold;
+	else if(toprow != -1) top = toprow;
+	if(top != -1) prioritize(top);
+	reorder_left = 5;
+	queue_status = 1;
+}
+
+void writeBack(fstream &out){
+	// writes current row back to memory
+	stats = 3;
+	cycles_left = 10;
+	out << "DRAM Writeback Initiated. "<< endl;
+}
+
+void copyRow(){
+	// copies required row into row buffer
+	stats = 2;
+	cycles_left = 2;
+}
+
+void getCol(){
+	// extracts required data from row buffer
+	stats = 1;
+	cycles_left = 0;
+}
+
+void sendValue(){
+	// sends output value to the core
+	int i = curr_request[0], ind = curr_request[1];
+	CPU[i].recieve = 1;
+	CPU[i].index_op = ind;
+	stats = 0;
+}
+
+void nextStep(fstream &out){
+	// proceeds to the next step in memory extraction
 	
-};
+	int i = curr_request[0], ind = curr_request[1], reg;
+	pair<string, int> temp = CPU[i].offset(CPU[i].instructions[ind+2]);
+	if (!CPU[i].isNumber(temp.first.substr(1))) reg = CPU[i].reg_name_to_number[temp.first.substr(1)];
+	else reg = stoi(temp.first.substr(1));
+	int mem = CPU[i].registers[reg] + temp.second;
+	
+	switch(stats){
+		case 1 : {
+			sendValue();
+			out << "Memory Location " << mem << " accessed." << endl;
+			col_accessed = mem;
+			break;
+		}
+		case 2 : {
+			getCol();
+			out << "Row " << mem/SZ_DRAM  << " copied to buffer"<< endl;
+			row_buffer = mem/SZ_DRAM;
+			break;
+		}
+		case 3 : {
+			copyRow();
+			out << "DRAM Writeback finished, written row " << row_buffer << endl;
+			break;
+		}
+	}
+}
+
+void clearQueue(fstream &out){
+	// retrieve and process the topmost request
+	QUEUE_SIZE--;
+	curr_request = MRM[0];
+	MRM.erase(MRM.begin());
+	
+	int i = curr_request[0], ind = curr_request[1], reg;
+	pair<string, int> temp = CPU[i].offset(CPU[i].instructions[ind+2]);
+	if (!CPU[i].isNumber(temp.first.substr(1))) reg = CPU[i].reg_name_to_number[temp.first.substr(1)];
+	else reg = stoi(temp.first.substr(1));
+	int mem = CPU[i].registers[reg] + temp.second;
+	
+	if(col_accessed == mem){
+		sendValue();
+	}
+	else if(row_buffer == mem/SZ_DRAM){
+		getCol();
+	}
+	else if(row_buffer == -1){
+		copyRow();
+	}
+	else{
+		writeBack(out);
+	}
+}
 
 int main(){
 	cout << "Number of input files , N: ";
@@ -535,13 +707,13 @@ int main(){
 		cout << "Name of the file " << i << " (0 for easy mode) : ";
 		cin >> file_name;
 		if(file_name == "0") file_name = "t" + to_string(i) + ".txt";
+		files[i-1] = file_name;
 	}
 	cout << "ROW_ACCESS_DELAY, in number of cycles: ";
 	cin >> ROW_ACCESS_DELAY;
 	cout << "COL_ACCESS_DELAY in number of cycles: ";
 	cin >> COL_ACCESS_DELAY;
 	
-	struct core CPU[N];
 	for(int i = 0; i < N; i++){
 		CPU[i].index = i;
 		CPU[i].initialize();
@@ -554,6 +726,39 @@ int main(){
 		else if (res == -2) {
 			cout << "Instruction memory is full! Too Many Instructions.)" << endl;
 			return -1;
+		}
+	}
+	
+	fstream out_MRM;
+	out_MRM.open("MRM_out.txt", ios::out);
+	
+	for(cycle = 1; cycle <= M; cycle++){
+		out_MRM << "Cycle " << cycle << ":" << endl;
+		reorder_left = max(0, reorder_left-1);
+		for(int i = 0; i < QUEUE_SIZE; i++) MRM[i][3]++;
+		// if(stop_current){
+			
+		// }
+		
+		if(reorder_left == 0){
+			if(queue_status == 0) out_MRM << "Memory Requests Reordering finished." << endl;
+			queue_status = 1;
+			else if(QUEUE_SIZE > 0 && stats == 0){
+				clearQueue(out_MRM);
+				out_MRM << "Starting to execute ";
+				for (int j=0; j<3; j++) out_MRM << CPU[curr_request[0]].instructions[curr_request[1]+j] + " ";
+				out_MRM << endl << "Reordering Started." << endl;
+				reorder();
+			}
+			else if(stats != 0 && cycles_left == 0){
+				nextStep(out_MRM);
+			}
+			else out_MRM << "No Memory Requests." << endl;
+		}
+		out_MRM << "--------------------------------------------------------------" << endl;
+		
+		for(int i = 0; i < N; i++){
+			CPU[i].nextCycle();
 		}
 	}
 }
