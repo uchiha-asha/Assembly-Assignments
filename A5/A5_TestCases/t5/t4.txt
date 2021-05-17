@@ -1,0 +1,5 @@
+addi $t1 $zero 10
+addi $t0 $zero 10
+add $s1 $t1 $t0
+lw $t1 2043($zero)
+add $t1 $t1 $s1

@@ -400,8 +400,9 @@ struct core{
 			output_s = "Executed ";
 			for (int j=0; j<3; j++) output_s = output_s + instructions[index_op+j] + " ";
 			recieve = 0;
+			reg_change.erase(reg_change.find(getRegister(index_op+1)));
 		}
-		else{
+		else if(curr_instruction < instructions.size()){
 			temp = processInstruction(curr_instruction);
 		}
 		printCycle();
@@ -498,7 +499,6 @@ struct core{
 		}
 		else if (instructions[i]=="addi") {
 			addi(i);
-			memory_changed = -1;
 			output_s = "Executed ";
 			for (int j=0; j<4; j++) output_s = output_s + instructions[i+j] + " ";
 			if(status == 1) instructions_count["addi"]++;
@@ -531,14 +531,15 @@ struct core{
 	}
 	
 	void printContents(){
-		output << endl << "Number of clock cycles: " << cycle << endl;
+		output << endl << "Number of clock cycles: " << cycle - 1 << endl;
 		output << "Buffer Updates: " << BUFFER_UPDATE << endl;
-		output << "Frquency of instructions: " << endl;
-		for (auto ele : instructions_count) output << ele.first << " : " << ele.second << ";  ";
 		output << "--------------------------------------------------------------" << endl;
-		output << "Register Contents" << endl;
+		output << "Frquency of instructions: " << endl;
+		for (auto ele : instructions_count) output << ele.first << " : " << ele.second << ";  " << endl;
+		output << "--------------------------------------------------------------" << endl;
+		output << "Register Contents:" << endl;
 		for (int i=0; i<32; i++) {
-			if (registers[i]) output << "$" << regs[i] << " : " << registers[i] << "; ";
+			if (registers[i]) output << "$" << regs[i] << " : " << registers[i] << "; " << endl;
 		}
 		output << "--------------------------------------------------------------" << endl;
 	}
@@ -610,26 +611,26 @@ void reorder(){
 	else if(toprow != -1) top = toprow;
 	if(top != -1) prioritize(top);
 	reorder_left = 5;
-	queue_status = 1;
+	queue_status = 0;
 }
 
 void writeBack(fstream &out){
 	// writes current row back to memory
 	stats = 3;
-	cycles_left = 10;
+	cycles_left = ROW_ACCESS_DELAY;
 	out << "DRAM Writeback Initiated. "<< endl;
 }
 
 void copyRow(){
 	// copies required row into row buffer
 	stats = 2;
-	cycles_left = 2;
+	cycles_left = ROW_ACCESS_DELAY;
 }
 
 void getCol(){
 	// extracts required data from row buffer
 	stats = 1;
-	cycles_left = 0;
+	cycles_left = COL_ACCESS_DELAY;
 }
 
 void sendValue(){
@@ -733,27 +734,41 @@ int main(){
 	out_MRM.open("MRM_out.txt", ios::out);
 	
 	for(cycle = 1; cycle <= M; cycle++){
-		out_MRM << "Cycle " << cycle << ":" << endl;
+		out_MRM << "Cycle " << cycle << ":" << endl << endl;
 		reorder_left = max(0, reorder_left-1);
+		cycles_left = max(0, cycles_left-1);
 		for(int i = 0; i < QUEUE_SIZE; i++) MRM[i][3]++;
-		// if(stop_current){
-			
-		// }
 		
-		if(reorder_left == 0){
-			if(queue_status == 0) out_MRM << "Memory Requests Reordering finished." << endl;
-			queue_status = 1;
+		if(stop_current){
+			stats = 0;
+			cycles_left = 0;
+			out_MRM << "Redundant Ongoing Instruction stopped." << endl;
+			if(QUEUE_SIZE > 0 && stats == 0){
+				clearQueue(out_MRM);
+				out_MRM << "Starting to execute ";
+				for (int j=0; j<3; j++) out_MRM << CPU[curr_request[0]].instructions[curr_request[1]+j] + " ";
+				out_MRM << "in Core " << curr_request[0] + 1;
+				out_MRM << endl << "Reordering Started." << endl;
+				reorder();
+			}
+			stop_current = 0;
+		}
+		else if(reorder_left == 0){
+			if(queue_status == 0){
+				out_MRM << "Memory Requests Reordering finished." << endl;
+				queue_status = 1;
+			}
 			else if(QUEUE_SIZE > 0 && stats == 0){
 				clearQueue(out_MRM);
 				out_MRM << "Starting to execute ";
 				for (int j=0; j<3; j++) out_MRM << CPU[curr_request[0]].instructions[curr_request[1]+j] + " ";
+				out_MRM << "in Core " << curr_request[0] + 1;
 				out_MRM << endl << "Reordering Started." << endl;
 				reorder();
 			}
 			else if(stats != 0 && cycles_left == 0){
 				nextStep(out_MRM);
 			}
-			else out_MRM << "No Memory Requests." << endl;
 		}
 		out_MRM << "--------------------------------------------------------------" << endl;
 		
@@ -761,22 +776,17 @@ int main(){
 			CPU[i].nextCycle();
 		}
 	}
+	for(int i = 0; i < N; i++){
+		if(!(CPU[i].lwCount == 0 && CPU[i].curr_instruction >= CPU[i].instructions.size())) CPU[i].printContents();
+	}
+	
+	out_MRM << "DRAM Writeback Performed." << endl;
+	out_MRM << "--------------------------------------------------------------" << endl;
+	
+	out_MRM << "Memory Contents:" << endl;
+	for (int i=1000; i<MAX_MEMORY; i+=4) {
+		int res = 0, mask = 0;
+		for (int j=0; j<4; j++) res +=  (dram[j+i] << mask), mask += 8;
+		if (res) out_MRM << "Memory at Location "  << i << " - " << i+3 << " :" << res << " " << endl;
+	}
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

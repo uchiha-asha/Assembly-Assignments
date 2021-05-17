@@ -1,0 +1,2 @@
+addi $t1 $zero 10
+sw $t1 2043($zero)

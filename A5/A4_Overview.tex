@@ -1,0 +1,130 @@
+\documentclass{article} % Especially this!
+
+\usepackage[english]{babel}
+\usepackage[utf8]{inputenc}
+\usepackage[margin=1.5in]{geometry}
+\usepackage{amsmath}
+\usepackage{amsthm}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage{graphicx}
+\usepackage[siunitx]{circuitikz}
+\usepackage{tikz}
+\usepackage[colorinlistoftodos, color=orange!50]{todonotes}
+\usepackage{hyperref}
+\usepackage[numbers, square]{natbib}
+\usepackage{fancybox}
+\usepackage{epsfig}
+\usepackage{soul}
+\usepackage[framemethod=tikz]{mdframed}
+\usepackage[shortlabels]{enumitem}
+\usepackage[version=4]{mhchem}
+\usepackage{multicol}
+\usepackage{graphicx}
+\graphicspath{ {./} }
+
+\newcommand{\blah}{blah blah blah \dots}
+
+\setlength{\marginparwidth}{3.4cm}
+
+\newcommand{\summary}[1]{
+\begin{mdframed}[nobreak=true]
+\begin{minipage}{\textwidth}
+\vspace{0.5cm}
+\end{minipage}
+\end{mdframed}}
+
+\renewcommand*{\thefootnote}{\fnsymbol{footnote}}
+
+\title{
+\normalfont \large
+\textsc{ASSIGNMENT-5
+\vspace{10pt}
+\\COL 216, Spring 2021} \\
+[10pt] 
+\rule{\linewidth}{0.5pt} \\[6pt] 
+\Large DRAM Request Manager for Multi-core Processors \\
+\rule{\linewidth}{2pt}  \\[10pt]
+}
+\author{Jitender Kumar Yadav, 2019CS10361
+\\Asha Ram Meena, 2019CS10337}
+\date{\normalsize \today}
+\begin{document}
+
+\maketitle
+\section{Problem Statement}
+\textbf{In this assignment you will extend your earlier DRAM request manager to the multicore CPU case. Our architecture now consists of N CPU cores, each running a different MIPS program, and sending DRAM requests to a Memory Request Manager which interfaces with the DRAM. The DRAM has the same properties that you have already implemented in earlier assignments. See example below.
+\begin{enumerate}
+    \item Extend your earlier MIPS simulator (with DRAM timings) to the multicore scenario. Your objective is to implement the Memory Request Manager in such a way that the instruction   throughput   (total   number   of   instructions   completed   by   the   whole system in a given period, say from Cycle 0 to Cycle M) is maximised.
+    \item Estimate   the   delay   (in   clock   cycles)   of   your own   Memory   Request   Manager algorithm   and   incorporate it   into   your   timing   model.   Justify   the estimation. Remember   this   is   an  estimate.   You   don’t have   to   design   the   entire   manager hardware. 
+\end{enumerate}}
+
+\section{Algorithm and Approach}
+A MIPS assembly file interpreter for files containing the following instructions was designed in C++: add, sub, mul, beq, bne, slt, j, lw, sw and addi. The memory, register contents, instructions etc. were stored in internal data structures and the program would validate the file for syntax errors and output the hexadecimal register contents and the number of clock cycles and executions. All instructions are read and interpreted in a linear fashion. Any optimizations thus to be made are made on DRAM requests and not on instructions. Thus, a queue was maintained in MRM to store DRAM requests issued.
+\\In previous assignment, a DRAM model, which is 1024*1024 2D array memory model was implemented. Also, a non-blocking memory and priority queue to reorder the lw-sw instructions was implemented.
+\\In this assignment, a multi-core model with single DRAM and MRM has been implemented where various DRAM requests can be reordered to minimise the time taken in write-back and copying to buffer.
+\begin{itemize}
+    \item[$\diamond$] The files containing the instructions are read and the syntax is checked while storing the instructions in the memory.
+    \item[$\diamond$] The instructions are read as per cycle and PC and the corresponding memory changes are checked and tasks like load, store, addition and subtraction are performed as per need.
+    \item[$\diamond$] The data in the 32 registers (Different for each core) is stored in an array and so is the auxiliary memory containing $2^{20}$ bits. The registers may be accessed by using MIPS conventions \$s and \$t or by integers 1-32.
+    \item[$\diamond$] The operations keep on updating the memory and register contents along side. The register contents are hexadecimal quantities. In case of any wrong memory is accessed by the assembly program, the program returns an error.
+    \item[$\diamond$] A finite queue in MRM is maintained where the requests for loading and storing are pushed back to back. The DRAM requests are issued alongside.
+    \item[$\diamond$] Once an lw or sw is in progress, among all the DRAM requests, the DRAM requests are chosen such that the execution cycles are less. This is done keeping in mind the fact that the output must not change.
+    \item[$\diamond$] When an lw or sw follows some trailing add/addi/mul/sub, the instructions are executed if they aren't affected by the lw or sw.
+\end{itemize}
+
+\section{MRM Delay}
+We have taken delay of MRM to be 5 cycles because maximum size of queue in the MRM is 6. For deciding the priority after pop/push operation on queue, linear traversal is performed which requires 5 comparisons. Each comparison takes 1 cycle and that's why, MRM Delay is 5.
+
+\section{Input and Output}
+\subsection{Input Specifications:}
+\begin{itemize}
+    \item Parameter N (number of CPU cores).
+    \item Parameter   M   (simulation   time:   number   of   cycles).   Execution   stops   after   the simulation time, even though all the instructions may not have completed.
+    \item MIPS assembly language files t1.txt, t2.txt,…,tN.txt
+    \item MIPS assembly language files t1.txt, t2.txt,…,tN.txt
+\end{itemize}
+\subsection{Output}
+The following are output for each core as well as the MRM.
+\begin{itemize}
+    \item The output is a set of printed lines in command line.
+    \item At every clock cycle, the clock cycle number and all activity in that cycle is printed, such as:
+    \begin{enumerate}
+        \item Address of Completed instruction, if any
+        \item Modified registers, if any (register number and new value)
+        \item Modified memory locations, if any (memory location and new value)
+        \item Activity on the DRAM, if any (memory location, row buffer updates)
+    \end{enumerate}
+    \item After execution completes, the relevant statistics are printed, such as:
+    \begin{enumerate}
+        \item Total execution time in clock cycles
+        \item Number of row buffer updates
+        \item The final contents of the registers
+        \item The final contents of the memory
+    \end{enumerate}
+\end{itemize}
+
+
+\section{Strengths and Weaknesses}
+\subsection{Strength}
+\begin{enumerate}
+    \item The approach can reorder the DRAM requests among a given finite number of DRAM requests, in form of lw and sw commands.
+    \item In case an lw or an sw is followed by some add, sub, mul and addi commands, these shall be executed in the cycles along with the ongoing reading and buffer write-back.
+    \item DRAM can stop processing redundant lw or sw instructions and move to the next instruction.
+    \item Same non-conflicting memory access request are made from different cores, then, memory is accessed only once to optimize throughput.
+\end{enumerate}
+\subsection{Weakness}
+\begin{enumerate}
+    \item It is possible that some add/mul/sub/addi may be blocked and further add and mul may be executed. This has not been done. An add operation which blocks the instruction parsing, stops execution. In other words, let us say some add occurs and can not be executed because it uses some other memory. We may bypass it and execute other instructions. This particular instruction may be executed later.
+\end{enumerate}
+
+\section{Testing}
+We created 4 main test cases to test our approach :-
+\begin{enumerate}
+    \item t1 :- This contains lot of lw and sw statements and hence, check for the finite size of Instruction Queue in MRM.
+    \item t2 :- This file tests for redundant lw/sw statements and reordering of lw and sw statements.
+    \item t3 :- It checks for same memory accesses from multiple cores and reordering of lw/sw statements.
+    \item t4 :- It checks for correct working of multi-core functionality on arithmetic and branch instructions. 
+\end{enumerate}
+
+\end{document}

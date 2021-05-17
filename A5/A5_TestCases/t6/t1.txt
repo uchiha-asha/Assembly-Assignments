@@ -1,0 +1,4 @@
+addi $t6 $zero 6
+sw $t6 1021($zero)
+add $t6 $t6 $t1
+lw $s5 1021($zero)
