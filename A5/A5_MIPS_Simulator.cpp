@@ -39,7 +39,7 @@ struct core{
 		ind_changing = -1,										// Index of memory or register changed
 		changed_val = -1;										// Changed value of memory or Register
 	
-	unordered_map<int,int> reg_change;							// Stores the instruction affecting registers
+	unordered_map<int,int> reg_change, reg_used;				// Stores the instruction affecting registers
 	unordered_map<string, int> reg_name_to_number, 				// Map of (conventional register name, register number)
 							instructions_count,					// Map to hold count of instructions
 							branches;							// Map of (branch label, pointer to the branch in instructions)
@@ -56,7 +56,7 @@ struct core{
 																// 5 if file is finished
 	
 	int recieve = 0,											// 1 if recieved value from MRM
-		index_op, lwCount = 0;
+		index_op, lwCount = 0, swCount = 0;
 	
 	//--------------------------------------- Helper and Checker Functions ---------------------------------------
 	
@@ -309,15 +309,16 @@ struct core{
 		int mem = registers[reg] + temp.second;
 		if (mem >= MAX_MEMORY) return -1;
 		int reg1 = getRegister(ind+1);
-		registers[reg1] = 0;
-		for (int i=0; i<4; i++) {
-			if ((mem+i)%SZ_DRAM == 0 && i) return -1;
-			registers[reg1] += (dram[mem+i] << mask);
-			mask += 8;
-		}
-		lwCount++;
 		popRequest(ind+1);
 		memRequest(ind);
+		if(status == 1){
+			registers[reg1] = 0;
+			for (int i=0; i<4; i++) {
+				if ((mem+i)%SZ_DRAM == 0 && i) return -1;
+				registers[reg1] += (dram[mem+i] << mask);
+				mask += 8;
+			}
+		}
 		return 0;
 	}
 
@@ -330,12 +331,14 @@ struct core{
 		int mem = registers[reg] + temp.second;
 		if (mem >= MAX_MEMORY) return -1;
 		int val = registers[getRegister(ind+1)];
-		for (int i=0; i<4; i++) {
-			if ((mem+i)%SZ_DRAM == 0 && i) return -1;
-			dram[mem+i] = (val >> mask) & MAX_VALUE_IN_MEMORY;
-			mask += 8;
-		}
 		memRequest(ind);
+		if(status == 1){
+			for (int i=0; i<4; i++) {
+				if ((mem+i)%SZ_DRAM == 0 && i) return -1;
+				dram[mem+i] = (val >> mask) & MAX_VALUE_IN_MEMORY;
+				mask += 8;
+			}
+		}
 		return 0;
 	}
 	
@@ -371,9 +374,16 @@ struct core{
 		
 		// Add dependency of registers
 		if (instructions[ind] == "lw") {
+			lwCount++;
 			int reg = getRegister(ind+1);
 			if (reg_change.find(reg) != reg_change.end()) reg_change[reg] = ind;
 			else reg_change.insert({reg, ind});
+		}
+		if (instructions[ind] == "sw") {
+			swCount++;
+			int reg = getRegister(ind+1);
+			if (reg_used.find(reg) != reg_used.end()) reg_used[reg] = ind;
+			else reg_used.insert({reg, ind});
 		}
 	}
 	
@@ -387,7 +397,7 @@ struct core{
 		// operate the nextCycle
 		int temp = -1000;
 		if(status == 5) return;
-		if(lwCount == 0 && curr_instruction >= instructions.size()){
+		if(lwCount == 0 && swCount == 0 && curr_instruction >= instructions.size()){
 			status = 5;
 			printContents();
 			return;
@@ -401,12 +411,33 @@ struct core{
 			output_s = "Executed ";
 			for (int j=0; j<3; j++) output_s = output_s + instructions[index_op+j] + " ";
 			recieve = 0;
-			reg_change.erase(reg_change.find(getRegister(index_op+1)));
+			if (reg_change.find(getRegister(index_op+1)) != reg_change.end() && reg_change[getRegister(index_op+1)] == index_op){
+				reg_change.erase(reg_change.find(getRegister(index_op+1)));
+			}
+			printCycle();
+		}
+		else if(recieve == 1 && instructions[index_op] == "sw"){
+			instructions_count["sw"]++;
+			swCount--;
+			memory_changed = 1;
+			pair<string,int> temp = offset(instructions[index_op+2]);
+			int reg;
+			if (!isNumber(temp.first.substr(1))) reg = reg_name_to_number[temp.first.substr(1)];
+			else reg = stoi(temp.first.substr(1));
+			ind_changing = registers[reg] + temp.second;
+			changed_val = dram[ind_changing];
+			output_s = "Executed ";
+			for (int j=0; j<3; j++) output_s = output_s + instructions[index_op+j] + " ";
+			recieve = 0;
+			if (reg_used.find(getRegister(index_op+1)) != reg_used.end() && reg_used[getRegister(index_op+1)] == index_op){
+				reg_used.erase(reg_used.find(getRegister(index_op+1)));
+			}
+			printCycle();
 		}
 		else if(curr_instruction < instructions.size()){
 			temp = processInstruction(curr_instruction);
+			printCycle();
 		}
-		printCycle();
 		if(status == 1 && temp != -1000) curr_instruction = temp;
 		status = 1;
 		memory_changed = -1;
@@ -496,7 +527,6 @@ struct core{
 			output_s = "DRAM request issued by ";
 			for (int j=0; j<3; j++) output_s = output_s + instructions[i+j] + " ";
 			i += 3;
-			if(status == 1) instructions_count["sw"]++;
 		}
 		else if (instructions[i]=="addi") {
 			addi(i);
@@ -547,7 +577,7 @@ struct core{
 	
 	void popRequest(int ind){
 		// check and remove an existing lw request being overwritten
-		if(reg_change.find(getRegister(ind)) != reg_change.end()){
+		if(reg_change.find(getRegister(ind)) != reg_change.end() && (reg_used.find(getRegister(ind)) == reg_used.end() || reg_used[getRegister(ind)] < reg_change[getRegister(ind)])){
 			int inst = reg_change[getRegister(ind)];
 			int i;
 			for(i = 0; i < QUEUE_SIZE; i++){
@@ -585,9 +615,8 @@ bool find(unordered_set<int> set, int i){
 void reorder(){
 	// finds the most prior DRAM request
 	int top = -1, topcol = -1, toprow = -1, topold = -1;
-	int stat = 0; // 0 means no condition, 1 means got a value 
 	unordered_set<int> reg_aff[N];
-	for(int i = 0; i < MRM.size(); i++){
+	for(int i = 0; i < QUEUE_SIZE; i++){
 		int j = MRM[i][0], ind = MRM[i][1], reg = 0, wait = MRM[i][3];
 		
 		pair<string, int> temp = CPU[j].offset(CPU[j].instructions[ind+2]);
@@ -598,21 +627,21 @@ void reorder(){
 		int registerVal = CPU[j].getRegister(ind+1);
 		if(find(reg_aff[j], registerVal) || find(reg_aff[j], reg)) continue;
 		reg_aff[j].insert(registerVal);
-		if(topold == -1 && wait > 26){
+		if(topcol == -1 && mem == col_accessed){
+			topcol = i;
+		}
+		else if(topold == -1 && wait > 50){
 			topold = i;
 		}
 		else if(toprow == -1 && mem/SZ_DRAM == row_buffer){
 			toprow = i;
-		}
-		else if(topcol == -1 && mem == col_accessed){
-			topcol = i;
 		}
 	}
 	if(topcol != -1) top = topcol;
 	else if(topold != -1) top = topold;
 	else if(toprow != -1) top = toprow;
 	if(top != -1) prioritize(top);
-	reorder_left = 5;
+	reorder_left = QUEUE_SIZE-1;
 	queue_status = 0;
 }
 
@@ -744,19 +773,18 @@ int main(){
 		if(stop_current){
 			stats = 0;
 			cycles_left = 0;
-			out_MRM << "Redundant Ongoing Instruction stopped." << endl;
-
+			out_MRM << "Redundant Ongoing Instruction stopped in core " << curr_request[0] + 1 << endl;
+			if (CPU[curr_request[0]].instructions[curr_request[1]] == "lw") CPU[curr_request[0]].lwCount--;
 			if(QUEUE_SIZE > 0 && stats == 0){
 				clearQueue(out_MRM);
 				out_MRM << "Starting to execute ";
 				for (int j=0; j<3; j++) out_MRM << CPU[curr_request[0]].instructions[curr_request[1]+j] + " ";
-				out_MRM << "in Core " << curr_request[0] + 1;
-				out_MRM << endl << "Reordering Started." << endl;
-				reorder();
+				out_MRM << "in Core " << curr_request[0] + 1 << endl;
+				if(QUEUE_SIZE > 0){
+					out_MRM << "Reordering Started. Size of MRM Queue: " << QUEUE_SIZE << endl;
+					reorder();
+				}
 			}
-
-			if (CPU[curr_request[0]].instructions[curr_request[1]] == "lw") 
-				CPU[curr_request[0]].lwCount--;
 			stop_current = 0;
 		}
 		else if(reorder_left == 0){
@@ -768,9 +796,11 @@ int main(){
 				clearQueue(out_MRM);
 				out_MRM << "Starting to execute ";
 				for (int j=0; j<3; j++) out_MRM << CPU[curr_request[0]].instructions[curr_request[1]+j] + " ";
-				out_MRM << "in Core " << curr_request[0] + 1;
-				out_MRM << endl << "Reordering Started." << endl;
-				reorder();
+				out_MRM << "in Core " << curr_request[0] + 1 << endl;
+				if(QUEUE_SIZE > 0){
+					out_MRM << "Reordering Started. Size of MRM Queue: " << QUEUE_SIZE << endl;
+					reorder();
+				}
 			}
 			else if(stats != 0 && cycles_left == 0){
 				nextStep(out_MRM);
@@ -783,11 +813,14 @@ int main(){
 		}
 	}
 	for(int i = 0; i < N; i++){
-		if(!(CPU[i].lwCount == 0 && CPU[i].curr_instruction >= CPU[i].instructions.size())) CPU[i].printContents();
+		if(!(CPU[i].lwCount == 0 && CPU[i].swCount == 0 && CPU[i].curr_instruction >= CPU[i].instructions.size())){
+			CPU[i].printContents();
+		}
 	}
-	
-	out_MRM << "DRAM Writeback Performed." << endl;
-	out_MRM << "--------------------------------------------------------------" << endl;
+	if(row_buffer != -1){
+		out_MRM << "DRAM Writeback Performed, written row " << row_buffer << " to memory." << endl;
+		out_MRM << "--------------------------------------------------------------" << endl;
+	}
 	
 	out_MRM << "Memory Contents:" << endl;
 	for (int i=1000; i<MAX_MEMORY; i+=4) {
