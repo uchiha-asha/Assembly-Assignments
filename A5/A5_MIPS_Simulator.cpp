@@ -315,7 +315,7 @@ struct core{
 			registers[reg1] += (dram[mem+i] << mask);
 			mask += 8;
 		}
-		lwCount ++;
+		lwCount++;
 		popRequest(ind+1);
 		memRequest(ind);
 		return 0;
@@ -393,6 +393,7 @@ struct core{
 			return;
 		}
 		if(recieve == 1 && instructions[index_op] == "lw"){
+			instructions_count["lw"]++;
 			lwCount--;
 			memory_changed = 0;
 			ind_changing = getRegister(index_op+1);
@@ -483,7 +484,7 @@ struct core{
 			output_s = "DRAM request issued by ";
 			for (int j=0; j<3; j++) output_s = output_s + instructions[i+j] + " ";
 			i += 3;
-			if(status == 1) instructions_count["lw"]++;
+			
 		}
 		else if (instructions[i]=="sw") {
 			int res = sw(i);
@@ -551,6 +552,7 @@ struct core{
 			int i;
 			for(i = 0; i < QUEUE_SIZE; i++){
 				if(MRM[i][0] == index && MRM[i][1] == inst){
+					if (instructions[MRM[i][1]] == "lw") lwCount--; 
 					MRM.erase(MRM.begin()+i);
 					QUEUE_SIZE --;
 					break;
@@ -743,6 +745,7 @@ int main(){
 			stats = 0;
 			cycles_left = 0;
 			out_MRM << "Redundant Ongoing Instruction stopped." << endl;
+
 			if(QUEUE_SIZE > 0 && stats == 0){
 				clearQueue(out_MRM);
 				out_MRM << "Starting to execute ";
@@ -751,6 +754,9 @@ int main(){
 				out_MRM << endl << "Reordering Started." << endl;
 				reorder();
 			}
+
+			if (CPU[curr_request[0]].instructions[curr_request[1]] == "lw") 
+				CPU[curr_request[0]].lwCount--;
 			stop_current = 0;
 		}
 		else if(reorder_left == 0){
